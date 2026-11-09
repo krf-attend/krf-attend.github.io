@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>KRF출퇴근</title>
+<meta name="theme-color" content="#1e6fd9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KRF출퇴근">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root { --bg:#fffaf0; --fg:#222; --btn:#1e6fd9; --ok:#1a8f3c; --warn:#c0392b; --muted:#888; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    margin:0; min-height:100vh; padding:20px 20px 120px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    background:var(--bg); color:var(--fg); text-align:center;
+  }
+  h1 { font-size:30px; margin:0 0 20px; }
+  .name { font-size:30px; font-weight:700; margin-bottom:28px; }
+  #punch {
+    width:78vw; max-width:340px; aspect-ratio:1; border-radius:50%; border:none;
+    background:var(--btn); color:#fff; font-size:46px; font-weight:800; line-height:1.3;
+    box-shadow:0 10px 24px rgba(0,0,0,.25);
+  }
+  #punch:active { transform:scale(.96); }
+  #punch.off { background:#e67e22; }
+  #punch:disabled { background:#9aa5b1; }
+  #status {
+    font-size:26px; font-weight:700; line-height:1.4; white-space:pre-line;
+    margin:-8px 0 24px; padding:14px 22px; border-radius:16px; min-height:40px;
+    background:#eef2f6; color:#444;
+  }
+  #status.working { background:#e3f4e8; color:#1a8f3c; }
+  #status.off { background:#fdf0e3; color:#b35a00; }
+  #msg { font-size:32px; font-weight:800; margin-top:30px; min-height:100px; line-height:1.4; white-space:pre-line; }
+  #msg.ok { color:var(--ok); }
+  #msg.warn { color:var(--warn); }
+  input {
+    font-size:30px; padding:16px; width:85vw; max-width:360px;
+    border:3px solid #999; border-radius:14px; text-align:center;
+  }
+  .save { margin-top:22px; font-size:30px; font-weight:700; padding:18px 48px; border:none; border-radius:14px; background:var(--btn); color:#fff; }
+  .guide { font-size:20px; color:#555; margin-top:16px; line-height:1.5; }
+  .small { position:fixed; bottom:12px; right:14px; font-size:14px; color:var(--muted); background:none; border:none; }
+  .brand { font-size:18px; font-weight:800; color:#1e6fd9; letter-spacing:1px; margin-bottom:12px; }
+
+  #picker, #kakao {
+    position:fixed; inset:0; z-index:10; background:var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px;
+  }
+  .ptitle { font-size:30px; font-weight:800; margin-bottom:24px; line-height:1.4; }
+  #pbtns { display:flex; flex-direction:column; gap:14px; width:85vw; max-width:360px; }
+  .pbtn { font-size:34px; font-weight:800; padding:20px; border:none; border-radius:18px; background:var(--btn); color:#fff; }
+  .pbtn.pout { background:#7f8c8d; }
+  .pcancel { margin-top:24px; font-size:22px; padding:12px 30px; border:2px solid #999; border-radius:12px; background:#fff; color:#555; }
+
+  /* 바탕화면 추가 안내 */
+  #install {
+    position:fixed; left:12px; right:12px; bottom:44px; z-index:5;
+    background:#fff; border:3px solid var(--btn); border-radius:18px; padding:14px 16px;
+    box-shadow:0 6px 18px rgba(0,0,0,.15);
+  }
+  #install .itext { font-size:20px; font-weight:700; line-height:1.5; white-space:pre-line; }
+  #installBtn { margin-top:10px; width:100%; font-size:26px; font-weight:800; padding:16px; border:none; border-radius:14px; background:var(--btn); color:#fff; }
+  #installClose { margin-top:8px; font-size:16px; color:var(--muted); background:none; border:none; }
+
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+  <div class="brand">KRF출퇴근</div>
+
+  <section id="register" class="hidden">
+    <h1>처음 한 번만<br>이름을 적어 주세요</h1>
+    <input id="nameInput" type="text" placeholder="예: 김영수" autocomplete="name">
+    <br>
+    <button class="save" id="saveBtn">등록</button>
+    <p class="guide">등록 후에는 버튼만 누르시면 됩니다.</p>
+  </section>
+
+  <section id="main" class="hidden">
+    <div class="name" id="nameLabel"></div>
+    <div id="status">확인 중…</div>
+    <button id="punch">출퇴근<br>누르기</button>
+    <div id="msg"></div>
+  </section>
+
+  <section id="picker" class="hidden">
+    <div class="ptitle" id="ptitle"></div>
+    <div id="pbtns"></div>
+    <button class="pcancel" id="pcancel">취소</button>
+  </section>
+
+  <section id="kakao" class="hidden">
+    <div class="ptitle">크롬으로 여는 중입니다…</div>
+    <p class="guide">화면이 바뀌지 않으면<br>아래 버튼을 눌러 주세요.</p>
+    <button class="save" id="kakaoBtn">다른 브라우저로 열기</button>
+  </section>
+
+  <div id="install" class="hidden">
+    <div class="itext" id="installText"></div>
+    <button id="installBtn" class="hidden">바탕화면에 추가하기</button>
+    <button id="installClose">나중에 하기</button>
+  </div>
+
+  <button class="small" id="resetBtn">이름 변경</button>
+
+<script>
+  // ▼ 기록 서버(Google Apps Script 웹 앱) 주소
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
+
+  const $ = (id) => document.getElementById(id);
+  const ua = navigator.userAgent || '';
+  const isKakao = /KAKAOTALK/i.test(ua);
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+
+  // 1) 카톡 안에서 열렸으면 크롬(아이폰은 사파리)으로 넘기기
+  if (isKakao) {
+    const target = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+    $('kakao').classList.remove('hidden');
+    $('kakaoBtn').addEventListener('click', () => { location.href = target; });
+    location.href = target;
+  }
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+
+  let name = store.get('name');
+  let deviceId = store.get('deviceId');
+  if (!deviceId) {
+    deviceId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    store.set('deviceId', deviceId);
+  }
+
+  async function api(action, payload) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      // text/plain 이어야 브라우저 사전요청 없이 Apps Script로 전달됨
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action }, payload))
+    });
+    return res.json();
+  }
+
+  function render() {
+    if (name) {
+      $('register').classList.add('hidden');
+      $('main').classList.remove('hidden');
+      $('nameLabel').textContent = name + ' 님';
+    } else {
+      $('main').classList.add('hidden');
+      $('register').classList.remove('hidden');
+    }
+  }
+
+  // 현재 상태를 화면 위쪽과 버튼 글자에 표시
+  function applyStatus(s) {
+    const st = $('status');
+    const btn = $('punch');
+    const where = s.place ? ' · ' + s.place : '';
+    if (s.state === 'working') {
+      st.textContent = '지금 출근 중입니다\n(' + s.time + ' 출근' + where + ')';
+      st.className = 'working';
+      btn.innerHTML = '퇴근<br>누르기';
+      btn.classList.add('off');
+    } else if (s.state === 'off' && s.type === '퇴근') {
+      st.textContent = '퇴근했습니다\n(' + s.time + ' 퇴근' + where + ')';
+      st.className = 'off';
+      btn.innerHTML = '출근<br>누르기';
+      btn.classList.remove('off');
+    } else {
+      st.textContent = s.state === 'off' ? '출근 전입니다' : '아직 기록이 없어요';
+      st.className = '';
+      btn.innerHTML = '출근<br>누르기';
+      btn.classList.remove('off');
+    }
+  }
+
+  async function loadStatus() {
+    if (!name) return;
+    try {
+      const s = await api('status', { deviceId: deviceId });
+      if (s && s.ok) applyStatus(s);
+    } catch (e) {
+      $('status').textContent = '';
+    }
+  }
+
+  function show(text, cls) {
+    const m = $('msg');
+    m.textContent = text;
+    m.className = cls || '';
+  }
+
+  function speak(text) {
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR';
+      u.rate = 0.9;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+
+  function vibrate(pattern) {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+  }
+
+  // 위치를 못 받아도 기록 자체는 남기도록 null을 반환
+  function getPosition() {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve(p.coords),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  }
+
+  // 등록 장소 밖일 때: 큰 버튼으로 장소 고르기 (취소하면 '')
+  function choosePlace(type, choices) {
+    return new Promise((resolve) => {
+      const pk = $('picker');
+      const box = $('pbtns');
+      const title = (type || '') + ' 장소를 골라 주세요';
+      $('ptitle').textContent = title;
+      box.innerHTML = '';
+      choices.forEach((n) => {
+        const b = document.createElement('button');
+        b.className = 'pbtn' + (n === '외부' ? ' pout' : '');
+        b.textContent = n;
+        b.addEventListener('click', () => { pk.classList.add('hidden'); resolve(n); });
+        box.appendChild(b);
+      });
+      $('pcancel').onclick = () => { pk.classList.add('hidden'); resolve(''); };
+      pk.classList.remove('hidden');
+      speak(title);
+    });
+  }
+
+  async function punch() {
+    const btn = $('punch');
+    btn.disabled = true;
+    show('위치 확인 중…');
+
+    const c = await getPosition();
+    show('기록 중…');
+
+    try {
+      const payload = {
+        name: name,
+        deviceId: deviceId,
+        lat: c ? c.latitude : '',
+        lng: c ? c.longitude : '',
+        acc: c ? Math.round(c.accuracy) : ''
+      };
+      let d = await api('punch', payload);
+      if (d.ok && d.needPlace) {
+        show('');
+        const chosen = await choosePlace(d.type, d.choices);
+        if (!chosen) { show('취소했어요\n다시 누르시면 됩니다', ''); return; }
+        show('기록 중…');
+        payload.place = chosen;
+        d = await api('punch', payload);
+      }
+      if (!d.ok) throw new Error(d.error || 'fail');
+
+      let text;
+      if (d.duplicate) {
+        text = '이미 ' + d.type + ' 처리되었어요\n(' + d.time + ')';
+        speak('이미 ' + d.type + ' 처리되었습니다');
+      } else {
+        text = d.type + ' 완료!\n' + (d.place ? d.place + ' · ' : '') + d.time;
+        speak(name + '님, ' + d.type + ' 처리되었습니다');
+      }
+      show(text, 'ok');
+      applyStatus({ state: d.type === '출근' ? 'working' : 'off', type: d.type, time: d.time, place: d.place });
+      vibrate(200);
+    } catch (e) {
+      show('기록되지 않았어요\n다시 눌러 주세요', 'warn');
+      speak('기록되지 않았습니다. 다시 눌러 주세요');
+      vibrate([300, 120, 300]);
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 3000);
+    }
+  }
+
+  // 2) 바탕화면 추가 안내 (이미 아이콘으로 열었으면 안 보임)
+  let deferredPrompt = null;
+  function showInstall(text, withButton) {
+    if (isStandalone || isKakao || store.get('installDismissed')) return;
+    $('installText').textContent = text;
+    $('installBtn').classList.toggle('hidden', !withButton);
+    $('install').classList.remove('hidden');
+  }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstall('바탕화면에 KRF출퇴근 아이콘을\n만들어 두면 편해요', true);
+  });
+  $('installBtn').addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    try { await deferredPrompt.userChoice; } catch (e) {}
+    deferredPrompt = null;
+    $('install').classList.add('hidden');
+  });
+  window.addEventListener('appinstalled', () => { $('install').classList.add('hidden'); });
+  $('installClose').addEventListener('click', () => {
+    $('install').classList.add('hidden');
+    store.set('installDismissed', '1');
+  });
+  // 설치 버튼을 쓸 수 없는 경우(아이폰, 일부 브라우저)에는 방법을 글로 안내
+  setTimeout(() => {
+    if (deferredPrompt) return;
+    if (isIOS) showInstall('아래 [공유] 버튼 → [홈 화면에 추가]를\n누르면 아이콘이 생겨요', false);
+    else showInstall('오른쪽 위 메뉴(⋮) → [홈 화면에 추가]를\n누르면 아이콘이 생겨요', false);
+  }, 3000);
+
+  $('saveBtn').addEventListener('click', () => {
+    const v = $('nameInput').value.trim();
+    if (!v) { $('nameInput').focus(); return; }
+    name = v;
+    store.set('name', v);
+    render();
+    loadStatus();
+  });
+
+  $('resetBtn').addEventListener('click', () => {
+    if (confirm('이름을 다시 등록할까요?')) {
+      store.del('name');
+      name = null;
+      render();
+    }
+  });
+
+  $('punch').addEventListener('click', punch);
+
+  if (!isKakao) {
+    render();
+    loadStatus();
+    // 다른 앱에 갔다가 돌아왔을 때도 다시 확인
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') loadStatus();
+    });
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>
