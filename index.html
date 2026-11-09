@@ -217,15 +217,25 @@
   }
 
   // 위치를 못 받아도 기록 자체는 남기도록 null을 반환
+  let lastPos = null, lastPosAt = 0;
   function getPosition() {
     return new Promise((resolve) => {
       if (!navigator.geolocation) return resolve(null);
       navigator.geolocation.getCurrentPosition(
-        (p) => resolve(p.coords),
+        (p) => { lastPos = p.coords; lastPosAt = Date.now(); resolve(p.coords); },
         () => resolve(null),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     });
+  }
+  // 화면을 열자마자 미리 위치를 잡아 두기 (버튼 누를 때 기다리지 않도록)
+  function warmPosition() {
+    if (!name || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => { lastPos = p.coords; lastPosAt = Date.now(); },
+      () => {},
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
   }
 
   // 등록 장소 밖일 때: 큰 버튼으로 장소 고르기 (취소하면 '')
@@ -254,7 +264,8 @@
     btn.disabled = true;
     show('위치 확인 중…');
 
-    const c = await getPosition();
+    const fresh = lastPos && (Date.now() - lastPosAt) < 2 * 60 * 1000;
+    const c = fresh ? lastPos : await getPosition();
     show('기록 중…');
 
     try {
@@ -335,6 +346,7 @@
     store.set('name', v);
     render();
     loadStatus();
+    warmPosition();
   });
 
   $('resetBtn').addEventListener('click', () => {
@@ -350,9 +362,10 @@
   if (!isKakao) {
     render();
     loadStatus();
+    warmPosition();
     // 다른 앱에 갔다가 돌아왔을 때도 다시 확인
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') loadStatus();
+      if (document.visibilityState === 'visible') { loadStatus(); warmPosition(); }
     });
   }
 
