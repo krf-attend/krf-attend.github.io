@@ -58,6 +58,19 @@
   .pbtn.pout { background:#7f8c8d; }
   .pcancel { margin-top:24px; font-size:22px; padding:12px 30px; border:2px solid #999; border-radius:12px; background:#fff; color:#555; }
 
+  /* 함께 퇴근할 동료 고르기 */
+  #mates {
+    position:fixed; inset:0; z-index:10; background:var(--bg);
+    display:flex; flex-direction:column; align-items:center; padding:24px 20px;
+  }
+  #mateAlone { width:85vw; max-width:360px; font-size:30px; font-weight:800; padding:18px; border:none; border-radius:18px; background:var(--btn); color:#fff; }
+  .mtitle { font-size:24px; font-weight:800; margin:22px 0 12px; line-height:1.4; }
+  #mateList { display:flex; flex-direction:column; gap:10px; width:85vw; max-width:360px; overflow-y:auto; max-height:42vh; }
+  .mate { font-size:28px; font-weight:700; padding:14px; border:3px solid var(--btn); border-radius:16px; background:#fff; color:var(--btn); }
+  .mate.on { background:var(--btn); color:#fff; }
+  #mateWith { margin-top:16px; width:85vw; max-width:360px; font-size:26px; font-weight:800; padding:16px; border:none; border-radius:16px; background:#e67e22; color:#fff; }
+  #mateWith:disabled { background:#c9ced4; }
+
   /* 바탕화면 추가 안내 */
   #install {
     position:fixed; left:12px; right:12px; bottom:44px; z-index:5;
@@ -93,6 +106,14 @@
     <div class="ptitle" id="ptitle"></div>
     <div id="pbtns"></div>
     <button class="pcancel" id="pcancel">취소</button>
+  </section>
+
+  <section id="mates" class="hidden">
+    <button id="mateAlone">나만 퇴근</button>
+    <div class="mtitle">같이 퇴근할 사람이 있으면<br>눌러서 고르세요</div>
+    <div id="mateList"></div>
+    <button id="mateWith" disabled>함께 퇴근하기</button>
+    <button class="pcancel" id="mateCancel">취소</button>
   </section>
 
   <section id="kakao" class="hidden">
@@ -173,8 +194,12 @@
     }
   }
 
+  let myState = '', coworkers = [];
+
   // 현재 상태를 화면 위쪽과 버튼 글자에 표시
   function applyStatus(s) {
+    myState = s.state || '';
+    if (Array.isArray(s.coworkers)) coworkers = s.coworkers;
     const st = $('status');
     const btn = $('punch');
     const where = s.place ? ' · ' + s.place : '';
@@ -269,9 +294,46 @@
     });
   }
 
+  // 퇴근할 때 같이 퇴근 처리할 동료 고르기: 고른 이름 배열 ([]=나만), 취소하면 null
+  function chooseMates(list) {
+    return new Promise((resolve) => {
+      const box = $('mateList'), withBtn = $('mateWith');
+      const picked = new Set();
+      box.innerHTML = '';
+      const refresh = () => {
+        withBtn.disabled = picked.size === 0;
+        withBtn.textContent = picked.size ? (picked.size + '명과 함께 퇴근하기') : '함께 퇴근하기';
+      };
+      list.forEach((n) => {
+        const b = document.createElement('button');
+        b.className = 'mate';
+        b.textContent = n;
+        b.addEventListener('click', () => {
+          if (picked.has(n)) { picked.delete(n); b.classList.remove('on'); b.textContent = n; }
+          else { picked.add(n); b.classList.add('on'); b.textContent = '✓ ' + n; }
+          refresh();
+        });
+        box.appendChild(b);
+      });
+      refresh();
+      const close = (v) => { $('mates').classList.add('hidden'); resolve(v); };
+      $('mateAlone').onclick = () => close([]);
+      withBtn.onclick = () => close(Array.from(picked));
+      $('mateCancel').onclick = () => close(null);
+      $('mates').classList.remove('hidden');
+    });
+  }
+
   async function punch() {
     const btn = $('punch');
     btn.disabled = true;
+
+    let alsoNames = [];
+    if (myState === 'working' && coworkers.length) {
+      const sel = await chooseMates(coworkers);
+      if (sel === null) { btn.disabled = false; return; }
+      alsoNames = sel;
+    }
     show('위치 확인 중…');
 
     const fresh = lastPos && (Date.now() - lastPosAt) < 2 * 60 * 1000;
@@ -284,7 +346,8 @@
         deviceId: deviceId,
         lat: c ? c.latitude : '',
         lng: c ? c.longitude : '',
-        acc: c ? Math.round(c.accuracy) : ''
+        acc: c ? Math.round(c.accuracy) : '',
+        alsoNames: alsoNames
       };
       let d = await api('punch', payload);
       if (d.ok && d.needPlace) {
@@ -303,11 +366,17 @@
         speak('이미 ' + d.type + ' 처리되었습니다');
       } else {
         text = d.type + ' 완료!\n' + (d.place ? d.place + ' · ' : '') + d.time;
-        speak(name + '님, ' + d.type + ' 처리되었습니다');
+        let say = name + '님, ' + d.type + ' 처리되었습니다';
+        if (d.also && d.also.length) {
+          text += '\n' + d.also.join(', ') + '님도 퇴근';
+          say += '. ' + d.also.join(', ') + '님도 함께 퇴근 처리되었습니다';
+        }
+        speak(say);
       }
       show(text, 'ok');
-      applyStatus({ state: d.type === '출근' ? 'working' : 'off', type: d.type, time: d.time, place: d.place });
+      applyStatus({ state: d.type === '출근' ? 'working' : 'off', type: d.type, time: d.time, place: d.place, coworkers: [] });
       vibrate(200);
+      setTimeout(loadStatus, 1500);   // 함께 출근 중인 사람 목록 새로 받기
     } catch (e) {
       show('기록되지 않았어요\n다시 눌러 주세요', 'warn');
       speak('기록되지 않았습니다. 다시 눌러 주세요');
