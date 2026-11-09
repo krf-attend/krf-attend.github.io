@@ -117,11 +117,18 @@
   const ua = navigator.userAgent || '';
   const isKakao = /KAKAOTALK/i.test(ua);
   const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+  const isSamsung = /SamsungBrowser/i.test(ua);
+  // 안드로이드에서 이 페이지를 크롬으로 여는 주소 (삼성 인터넷 설치는 Play 프로텍트에 막힘)
+  const chromeIntent = 'intent://' + location.host + location.pathname + location.search +
+    '#Intent;scheme=https;package=com.android.chrome;end';
   const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
 
   // 1) 카톡 안에서 열렸으면 크롬(아이폰은 사파리)으로 넘기기
   if (isKakao) {
-    const target = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+    const target = isAndroid
+      ? chromeIntent
+      : 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
     $('kakao').classList.remove('hidden');
     $('kakaoBtn').addEventListener('click', () => { location.href = target; });
     location.href = target;
@@ -317,10 +324,12 @@
   }
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
+    if (isSamsung) return;  // 삼성 인터넷 자체 설치는 쓰지 않음
     deferredPrompt = e;
     showInstall('바탕화면에 KRF출퇴근 아이콘을\n만들어 두면 편해요', true);
   });
   $('installBtn').addEventListener('click', async () => {
+    if (isSamsung) { location.href = chromeIntent; return; }
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     try { await deferredPrompt.userChoice; } catch (e) {}
@@ -335,6 +344,11 @@
   // 설치 버튼을 쓸 수 없는 경우(아이폰, 일부 브라우저)에는 방법을 글로 안내
   setTimeout(() => {
     if (deferredPrompt) return;
+    if (isSamsung && isAndroid) {
+      $('installBtn').textContent = '크롬으로 열기';
+      showInstall('삼성 인터넷에서는 설치가 막혀요.\n크롬으로 열어서 추가해 주세요', true);
+      return;
+    }
     if (isIOS) showInstall('아래 [공유] 버튼 → [홈 화면에 추가]를\n누르면 아이콘이 생겨요', false);
     else showInstall('오른쪽 위 메뉴(⋮) → [홈 화면에 추가]를\n누르면 아이콘이 생겨요', false);
   }, 3000);
