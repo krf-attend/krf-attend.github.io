@@ -162,6 +162,12 @@
   <section id="pick" class="hidden">
     <h1>처음 한 번만<br>내 이름을 눌러 주세요</h1>
     <div id="pickList"><div class="guide">불러오는 중…</div></div>
+    <button id="superLink" style="margin-top:28px;font-size:16px;color:#999;background:none;border:none;text-decoration:underline">관리자 등록</button>
+    <div id="superForm" class="hidden" style="margin-top:12px">
+      <input id="superName" placeholder="이름" style="font-size:22px;padding:10px;width:70vw;max-width:300px"><br>
+      <input id="superCode" placeholder="관리자 코드" inputmode="numeric" style="font-size:22px;padding:10px;width:70vw;max-width:300px;margin-top:8px"><br>
+      <button class="save" id="superBtn" style="font-size:24px;padding:12px 34px">등록</button>
+    </div>
   </section>
 
   <div id="pickAsk" class="hidden">
@@ -347,12 +353,17 @@
     }
     if (s.name && s.name !== name) { name = s.name; store.set('name', name); }
     if (typeof s.admin === 'boolean') $('adminBtn').classList.toggle('hidden', !s.admin);
+    // 슈퍼관리자 휴대폰: 출퇴근 버튼 없이 관리자 화면만
+    const sup = !!s.super;
+    if (sup) { $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden'); }
+    else { $('status').classList.remove('hidden'); $('punch').classList.remove('hidden'); $('histBtn').classList.remove('hidden'); }
+    if (sup && !superOpened) { superOpened = true; setTimeout(() => { $('admin').classList.remove('hidden'); loadAdmin(); }, 0); }
     if (view !== 'main') { render('main'); warmPosition(); }
     else $('nameLabel').textContent = name ? name + ' 님' : '';
     return true;
   }
 
-  let myState = '', mates = [], picked = [];
+  let myState = '', mates = [], picked = [], superOpened = false;
 
   // 다음에 누를 동작 (출근 또는 퇴근)
   const nextType = () => (myState === 'working' ? '퇴근' : '출근');
@@ -404,7 +415,7 @@
   async function loadStatus() {
     try {
       const s = await api('status', { deviceId: deviceId });
-      if (s && s.ok && handleAuth(s)) applyStatus(s);
+      if (s && s.ok && handleAuth(s) && !s.super) applyStatus(s);
     } catch (e) {
       $('status').textContent = '';
     }
@@ -595,6 +606,17 @@
 
   $('waitRe').addEventListener('click', () => { $('waitBig').textContent = '확인 중…'; $('waitSub').textContent = ''; loadStatus(); });
   $('waitOther').addEventListener('click', showPick);
+  $('superLink').addEventListener('click', () => $('superForm').classList.toggle('hidden'));
+  $('superBtn').addEventListener('click', async () => {
+    const code = $('superCode').value.trim(), nm = $('superName').value.trim();
+    if (!nm || !code) { alert('이름과 관리자 코드를 넣어 주세요'); return; }
+    $('superBtn').disabled = true;
+    let r;
+    try { r = await api('superJoin', { deviceId: deviceId, code: code, name: nm }); } catch (e) { r = null; }
+    $('superBtn').disabled = false;
+    if (!r || !r.ok) { alert((r && r.error) || '등록하지 못했어요'); return; }
+    loadStatus();
+  });
   // 승인 대기 중에는 20초마다 저절로 다시 확인
   setInterval(() => { if (view === 'wait' && document.visibilityState === 'visible') loadStatus(); }, 20000);
 
@@ -712,11 +734,14 @@
     else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span></div>').join('') + '</div>';
     h += '<div class="asec">직원 (' + d.staff.length + ')</div>';
     d.staff.forEach((e) => {
-      const tag = e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>';
+      const tag = (e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>') +
+        (e.admin ? ' <span class="atag" style="background:#f4e6f9;color:#8e44ad">관리자</span>' : '');
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
         '<div class="arow">' + ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + v + '</button>').join('') +
         (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') +
-        '<button class="abtn" data-op="records" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기록 수정</button></div></div>';
+        '<button class="abtn" data-op="records" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기록 수정</button>' +
+        (d.super ? '<button class="abtn" data-op="admin" data-v="' + (e.admin ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.admin ? '관리자 해제' : '관리자 지정') + '</button>' : '') +
+        '</div></div>';
     });
     body.innerHTML = h;
   }
@@ -811,7 +836,8 @@
     if (op === 'records') { edYM = ''; openRecords(no, nm); return; }
     if (op === 'status' && b.classList.contains('sel')) return;
     const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
-      op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' : '';
+      op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' :
+      op === 'admin' ? nm + '님을 관리자' + (v === '1' ? '로 지정할까요?' : '에서 해제할까요?') : '';
     if (ask && !confirm(ask)) return;
     b.disabled = true;
     let r;
