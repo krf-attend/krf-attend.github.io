@@ -145,6 +145,9 @@
   .atag { font-size:15px; font-weight:700; padding:3px 8px; border-radius:8px; background:#eef2f6; color:#555; }
   .atag.wait { background:#fff3e0; color:#b35a00; }
   .aempty { font-size:18px; color:#888; margin:4px 6px; }
+  .afil { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 4px 6px; }
+  .afil b { font-size:16px; color:#777; width:36px; }
+  .afil .abtn { font-size:16px; padding:5px 11px; }
   .eform { background:#f7f3fa; border-radius:12px; padding:10px; margin-top:8px; }
   .eform input { font-size:20px; padding:6px 8px; width:auto; border:2px solid #9aa5b1; border-radius:8px; }
   .eform label { font-size:17px; margin-right:6px; }
@@ -763,8 +766,28 @@
     h += '<div class="asec">지금 출근 중 (' + d.working.length + ')</div>';
     if (!d.working.length) h += '<div class="aempty">출근 중인 사람이 없어요</div>';
     else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span></div>').join('') + '</div>';
-    h += '<div class="asec">직원 (' + d.staff.length + ')</div>';
-    d.staff.forEach((e) => {
+    aStaff = d.staff; aSuper = d.super;
+    h += '<div id="aStaff"></div>';
+    body.innerHTML = h;
+    renderStaff();
+  }
+
+  // 직원 목록 거르기 (상태·부서·기기) — 고른 조건은 이 폰에 기억
+  let aStaff = [], aSuper = false, fil = { st: '재직', dp: '전체', dv: '전체' };
+  try { fil = Object.assign(fil, JSON.parse(store.get('adminFil') || '{}')); } catch (e) {}
+  function renderStaff() {
+    const box = $('aStaff');
+    if (!box) return;
+    const d = { super: aSuper };
+    const devOf = (e) => e.registered ? (e.ok ? '등록됨' : '승인 대기') : '미등록';
+    const cnt = (k, v) => aStaff.filter((e) => v === '전체' || (k === 'st' ? e.status === v : k === 'dp' ? e.dept === v : devOf(e) === v)).length;
+    const row = (k, label, vals) => '<div class="afil"><b>' + label + '</b>' + vals.map((v) =>
+      '<button class="abtn' + (fil[k] === v ? ' sel' : '') + '" data-f="' + k + '" data-v="' + v + '">' + v + (v === '전체' ? '' : ' ' + cnt(k, v)) + '</button>').join('') + '</div>';
+    const list = aStaff.filter((e) => (fil.st === '전체' || e.status === fil.st) && (fil.dp === '전체' || e.dept === fil.dp) && (fil.dv === '전체' || devOf(e) === fil.dv));
+    let h = '<div class="asec">직원 (' + list.length + (list.length !== aStaff.length ? ' / ' + aStaff.length : '') + ')</div>' +
+      row('st', '상태', ['재직', '휴직', '퇴사', '전체']) + row('dp', '부서', ['전체', '순국', '기억', '주간']) + row('dv', '기기', ['전체', '등록됨', '승인 대기', '미등록']);
+    if (!list.length) h += '<div class="aempty">조건에 맞는 직원이 없어요</div>';
+    list.forEach((e) => {
       const tag = (e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>') +
         (e.admin ? ' <span class="atag" style="background:#f4e6f9;color:#8e44ad">관리자</span>' : '');
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
@@ -774,7 +797,7 @@
         (d.super ? '<button class="abtn" data-op="admin" data-v="' + (e.admin ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.admin ? '관리자 해제' : '관리자 지정') + '</button>' : '') +
         '</div></div>';
     });
-    body.innerHTML = h;
+    box.innerHTML = h;
   }
 
   // 관리자 기록 수정: 한 직원의 달별 기록 → 시각 고치기 / 지우기 / 빠진 기록 넣기 (원래 기록은 수정이력 탭에 남음)
@@ -819,6 +842,8 @@
     return true;
   }
   $('adminBody').addEventListener('click', async (ev) => {
+    const fb = ev.target.closest('button[data-f]');
+    if (fb) { fil[fb.dataset.f] = fb.dataset.v; try { store.set('adminFil', JSON.stringify(fil)); } catch (e) {} renderStaff(); return; }
     const eb = ev.target.closest('button[data-ed]');
     if (eb) {
       const k = eb.dataset.ed, rec = eb.closest('.erec');
