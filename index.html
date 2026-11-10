@@ -145,6 +145,12 @@
   .atag { font-size:15px; font-weight:700; padding:3px 8px; border-radius:8px; background:#eef2f6; color:#555; }
   .atag.wait { background:#fff3e0; color:#b35a00; }
   .aempty { font-size:18px; color:#888; margin:4px 6px; }
+  .eform { background:#f7f3fa; border-radius:12px; padding:10px; margin-top:8px; }
+  .eform input { font-size:20px; padding:6px 8px; width:auto; border:2px solid #9aa5b1; border-radius:8px; }
+  .eform label { font-size:17px; margin-right:6px; }
+  .erec { font-size:20px; line-height:1.5; padding:8px 4px; border-bottom:1px solid #eee; }
+  .erec small { color:#777; font-size:14px; display:block; }
+  .abtn:disabled { opacity:.3; }
   #adminClose { margin-top:10px; width:85vw; max-width:360px; font-size:26px; font-weight:800; padding:14px; border:none; border-radius:16px; background:var(--btn); color:#fff; }
 
   .hidden { display:none !important; }
@@ -709,14 +715,100 @@
       const tag = e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>';
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
         '<div class="arow">' + ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + v + '</button>').join('') +
-        (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') + '</div></div>';
+        (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') +
+        '<button class="abtn" data-op="records" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기록 수정</button></div></div>';
     });
     body.innerHTML = h;
   }
+
+  // 관리자 기록 수정: 한 직원의 달별 기록 → 시각 고치기 / 지우기 / 빠진 기록 넣기 (원래 기록은 수정이력 탭에 남음)
+  let edNo = null, edName = '', edYM = '';
+  async function openRecords(no, nm) {
+    edNo = no; edName = nm; edYM = edYM || ymStr(new Date());
+    const body = $('adminBody');
+    const [y, m] = edYM.split('-').map(Number);
+    body.innerHTML = '<div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">← 목록</button>' +
+      '<span class="aname">' + esc(nm) + '</span><span></span></div>' +
+      '<div class="arow" style="justify-content:center"><button class="abtn" data-ed="prev">◀</button><span class="aname" style="margin:0 10px">' + y + '년 ' + m + '월</span>' +
+      '<button class="abtn" data-ed="next"' + (edYM >= ymStr(new Date()) ? ' disabled' : '') + '>▶</button></div>' +
+      '<div class="acard"><button class="abtn go" data-ed="addform">+ 빠진 기록 넣기</button><div id="edAdd"></div></div>' +
+      '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>';
+    let d;
+    try { d = await api('adminRecords', { deviceId: deviceId, no: no, month: edYM }); } catch (e) { d = null; }
+    const list = $('edList');
+    if (!list) return;
+    if (!d || !d.ok) { list.innerHTML = '<div class="aempty">불러오지 못했어요</div>'; return; }
+    if (!d.records.length) { list.innerHTML = '<div class="aempty">이 달 기록이 없어요</div>'; return; }
+    list.innerHTML = d.records.map((r) => {
+      const dt = new Date(r.wd + 'T00:00:00');
+      const nd = r.day !== r.wd;
+      return '<div class="erec" data-row="' + r.row + '" data-at="' + r.at + '"><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' +
+        '<span class="' + (r.type === '출근' ? 'in' : 'out') + '" style="font-weight:800;color:' + (r.type === '출근' ? 'var(--ok)' : '#b35a00') + '">' + esc(r.type) + '</span> ' +
+        (nd ? '다음날 ' : '') + esc(r.time) + ' <span class="asub">' + esc(r.place) + '</span>' +
+        (/관리자/.test(r.how) ? '<small>' + esc(r.how) + '</small>' : '') +
+        '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '">시각 고치기</button>' +
+        '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
+    }).join('');
+  }
+  async function edCall(payload) {
+    let r;
+    try { r = await api('adminEdit', Object.assign({ deviceId: deviceId }, payload)); } catch (e) { r = null; }
+    if (!r || !r.ok) { alert((r && r.error) || '처리하지 못했어요'); return false; }
+    openRecords(edNo, edName);
+    return true;
+  }
   $('adminBody').addEventListener('click', async (ev) => {
+    const eb = ev.target.closest('button[data-ed]');
+    if (eb) {
+      const k = eb.dataset.ed, rec = eb.closest('.erec');
+      if (k === 'back') { edYM = ''; loadAdmin(); return; }
+      if (k === 'prev' || k === 'next') {
+        const [y, m] = edYM.split('-').map(Number);
+        edYM = ymStr(new Date(y, m - 1 + (k === 'prev' ? -1 : 1), 1)); openRecords(edNo, edName); return;
+      }
+      if (k === 'addform') {
+        const today = todayStr();
+        $('edAdd').innerHTML = '<div class="eform"><div class="arow"><label>근무일</label><input type="date" id="edWd" value="' + today + '" max="' + today + '"></div>' +
+          '<div class="arow"><button class="abtn sel" data-ed="tin">출근</button><button class="abtn" data-ed="tout">퇴근</button></div>' +
+          '<div class="arow"><label>시각</label><input type="time" id="edTime" value="09:00"> <label><input type="checkbox" id="edNd"> 다음날</label></div>' +
+          '<div class="arow"><button class="abtn go" data-ed="addsave">저장</button></div></div>';
+        return;
+      }
+      if (k === 'tin' || k === 'tout') {
+        eb.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === eb)); return;
+      }
+      if (k === 'addsave') {
+        const type = $('edAdd').querySelector('button[data-ed="tout"]').classList.contains('sel') ? '퇴근' : '출근';
+        const wd = $('edWd').value, t = $('edTime').value, nd = $('edNd').checked;
+        if (!wd || !t) { alert('근무일과 시각을 넣어 주세요'); return; }
+        if (!confirm(edName + '님 ' + wd + ' ' + type + ' ' + (nd ? '다음날 ' : '') + t + ' 기록을 넣을까요?')) return;
+        edCall({ op: 'add', no: edNo, wd: wd, type: type, time: t, nextDay: nd });
+        return;
+      }
+      if (k === 'editform') {
+        rec.querySelector('.edSlot').innerHTML = '<div class="eform"><div class="arow"><label>새 시각</label><input type="time" class="edT" value="' + eb.dataset.time + '"> ' +
+          '<label><input type="checkbox" class="edN"' + (eb.dataset.nd === '1' ? ' checked' : '') + '> 다음날</label></div>' +
+          '<div class="arow"><button class="abtn go" data-ed="editsave">저장</button></div></div>';
+        return;
+      }
+      if (k === 'editsave') {
+        const t = rec.querySelector('.edT').value, nd = rec.querySelector('.edN').checked;
+        if (!t) return;
+        if (!confirm(edName + '님 기록을 ' + (nd ? '다음날 ' : '') + t + '(으)로 고칠까요?\n(원래 시각은 수정이력에 남아요)')) return;
+        edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd });
+        return;
+      }
+      if (k === 'delete') {
+        if (!confirm(edName + '님 ' + eb.dataset.desc + ' 기록을 지울까요?\n(지운 기록은 수정이력에 남아요)')) return;
+        edCall({ op: 'delete', row: rec.dataset.row, expectAt: rec.dataset.at });
+        return;
+      }
+      return;
+    }
     const b = ev.target.closest('button[data-op]');
     if (!b) return;
     const op = b.dataset.op, no = b.dataset.no, nm = b.dataset.name || '', v = b.dataset.v || '';
+    if (op === 'records') { edYM = ''; openRecords(no, nm); return; }
     if (op === 'status' && b.classList.contains('sel')) return;
     const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
       op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' : '';
