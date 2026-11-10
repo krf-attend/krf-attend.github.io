@@ -386,6 +386,7 @@
 
   // 현재 상태를 화면 위쪽과 버튼 글자에 표시
   function applyStatus(s) {
+    if (s && s.state) { try { store.set('lastStatus', JSON.stringify({ state: s.state, type: s.type, time: s.time, place: s.place })); } catch (e) {} }
     const prev = myState;
     myState = s.state || '';
     if (prev && prev !== myState) picked = [];          // 출근↔퇴근이 바뀌면 고른 사람 초기화
@@ -449,7 +450,7 @@
       navigator.geolocation.getCurrentPosition(
         (p) => { lastPos = p.coords; lastPosAt = Date.now(); resolve(p.coords); },
         () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
       );
     });
   }
@@ -510,7 +511,7 @@
     const alsoNos = picked.slice();
     show('위치 확인 중…');
 
-    const fresh = lastPos && (Date.now() - lastPosAt) < 2 * 60 * 1000;
+    const fresh = lastPos && (Date.now() - lastPosAt) < 5 * 60 * 1000;   // 화면 열 때 미리 잡아 둔 위치를 5분까지 그대로 씀
     const c = fresh ? lastPos : await getPosition();
     show('기록 중…');
 
@@ -861,6 +862,8 @@
 
   if (!isKakao) {
     render('main');                       // 등록된 폰이면 바로 출퇴근 화면 (서버 확인 후 필요하면 이름 고르기로)
+    // 지난번 상태를 먼저 보여 주고 (기다리지 않게) 서버 답이 오면 바로 바꿈
+    try { const ls = JSON.parse(store.get('lastStatus') || 'null'); if (ls && name) applyStatus(ls); } catch (e) {}
     loadStatus();
     warmPosition();
     // 다른 앱에 갔다가 돌아왔을 때도 다시 확인
