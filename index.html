@@ -81,6 +81,17 @@
   .hrow .out { color:#b35a00; font-weight:800; }
   .hrow .dur { color:#555; font-size:18px; }
   .hempty { font-size:22px; color:#888; text-align:center; margin-top:40px; }
+  .cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; margin-bottom:10px; }
+  .cw { text-align:center; font-size:16px; font-weight:800; color:#555; padding:2px 0; }
+  .cw.sun, .cnum.sun { color:#c0392b; } .cw.sat, .cnum.sat { color:#1e6fd9; }
+  .cday { background:#fff; border-radius:8px; min-height:64px; padding:3px 1px; text-align:center; border:2px solid transparent; }
+  .cday.has { background:#f4faf5; }
+  .cday.today { border-color:#9aa5b1; }
+  .cday.sel { border-color:var(--btn); }
+  .cnum { font-size:16px; font-weight:800; }
+  .cin { font-size:13px; font-weight:700; color:var(--ok); letter-spacing:-.5px; }
+  .cout { font-size:13px; font-weight:700; color:#b35a00; letter-spacing:-.5px; }
+  .cmiss { font-size:12px; color:#c0392b; }
   #histClose { margin-top:10px; width:85vw; max-width:360px; font-size:26px; font-weight:800; padding:14px; border:none; border-radius:16px; background:var(--btn); color:#fff; }
   #mates {
     position:fixed; inset:0; z-index:10; background:var(--bg);
@@ -498,6 +509,36 @@
     const m = Math.round(ms / 60000), h = Math.floor(m / 60), r = m % 60;
     return (h ? h + '시간 ' : '') + (r ? r + '분' : (h ? '' : '0분'));
   }
+  // 하루치 기록을 출근→퇴근 짝으로 묶기
+  function pairsOf(day) {
+    const out = []; let open = null;
+    day.items.forEach((it) => {
+      if (it.type === '출근') { if (open) out.push({ in: open }); open = it; }
+      else if (open) { out.push({ in: open, out: it }); open = null; }
+      else out.push({ out: it });
+    });
+    if (open) out.push({ in: open });
+    return out;
+  }
+  const todayStr = () => { const t = new Date(); return ymStr(t) + '-' + String(t.getDate()).padStart(2, '0'); };
+  let histDays = {};
+  function showDay(date) {
+    document.querySelectorAll('.cday.sel').forEach((e) => e.classList.remove('sel'));
+    const cell = document.querySelector('.cday[data-d="' + date + '"]');
+    if (cell) cell.classList.add('sel');
+    const dt = new Date(date + 'T00:00:00');
+    let html = '<div class="hdate">' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 (' + WEEK[dt.getDay()] + ')</div>';
+    const day = histDays[date];
+    if (!day) html += '<div class="hrow" style="color:#888">기록 없음</div>';
+    else pairsOf(day).forEach((p) => {
+      const next = (it) => (it.day !== date ? '다음날 ' : '');
+      if (p.in && p.out) html += '<div class="hrow"><span class="in">출근</span> ' + p.in.time + ' → <span class="out">퇴근</span> ' + next(p.out) + p.out.time +
+        ' <span class="dur">(' + hm(p.out.at - p.in.at) + ')</span></div>';
+      else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + p.in.time + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
+      else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + p.out.time + '</div>';
+    });
+    $('histDetail').innerHTML = html;
+  }
   async function loadHist() {
     const [y, m] = histYM.split('-').map(Number);
     $('histMonth').textContent = y + '년 ' + m + '월';
@@ -507,35 +548,34 @@
     let d;
     try { d = await api('history', { deviceId: deviceId, name: name, month: histYM }); } catch (e) { d = null; }
     if (!d || !d.ok) { $('histSum').textContent = '불러오지 못했어요. 다시 열어 주세요'; return; }
-    let total = 0, workDays = 0;
-    const box = $('histList');
+    histDays = {};
+    let total = 0;
     d.days.forEach((day) => {
-      const dt = new Date(day.date + 'T00:00:00');
-      const div = document.createElement('div');
-      div.className = 'hday';
-      let html = '<div class="hdate">' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 (' + WEEK[dt.getDay()] + ')</div>';
-      let open = null, dayTotal = 0;
-      day.items.forEach((it) => {
-        const next = it.day !== day.date ? '다음날 ' : '';
-        if (it.type === '출근') {
-          if (open) html += '<div class="hrow"><span class="in">출근</span> ' + open.time + ' → 퇴근 기록 없음</div>';
-          open = it;
-        } else if (open) {
-          const ms = it.at - open.at; dayTotal += ms;
-          html += '<div class="hrow"><span class="in">출근</span> ' + open.time + ' → <span class="out">퇴근</span> ' + next + it.time +
-            ' <span class="dur">(' + hm(ms) + ')</span></div>';
-          open = null;
-        } else {
-          html += '<div class="hrow"><span class="out">퇴근</span> ' + next + it.time + '</div>';
-        }
-      });
-      if (open) html += '<div class="hrow"><span class="in">출근</span> ' + open.time + (day.date === ymStr(new Date()) + '-' + String(new Date().getDate()).padStart(2, '0') ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
-      if (dayTotal) { total += dayTotal; workDays++; }
-      div.innerHTML = html;
-      box.appendChild(div);
+      histDays[day.date] = day;
+      pairsOf(day).forEach((p) => { if (p.in && p.out) total += p.out.at - p.in.at; });
     });
-    if (!d.days.length) box.innerHTML = '<div class="hempty">이 달에는 기록이 없어요</div>';
-    $('histSum').textContent = d.days.length ? ('출근 ' + d.days.length + '일 · 총 ' + hm(total)) : '';
+    // 달력: 일~토 7칸, 칸마다 첫 출근(초록)과 마지막 퇴근(주황)
+    let html = '<div class="cal">' + WEEK.map((w, k) => '<div class="cw' + (k === 0 ? ' sun' : k === 6 ? ' sat' : '') + '">' + w + '</div>').join('');
+    const first = new Date(y, m - 1, 1).getDay(), last = new Date(y, m, 0).getDate();
+    for (let k = 0; k < first; k++) html += '<div></div>';
+    for (let dd = 1; dd <= last; dd++) {
+      const date = histYM + '-' + String(dd).padStart(2, '0');
+      const day = histDays[date], wd = (first + dd - 1) % 7;
+      let inner = '<div class="cnum' + (wd === 0 ? ' sun' : wd === 6 ? ' sat' : '') + '">' + dd + '</div>';
+      if (day) {
+        const ins = day.items.filter((it) => it.type === '출근'), outs = day.items.filter((it) => it.type === '퇴근');
+        if (ins.length) inner += '<div class="cin">' + ins[0].time + '</div>';
+        if (outs.length) inner += '<div class="cout">' + outs[outs.length - 1].time + '</div>';
+        else if (date !== todayStr()) inner += '<div class="cmiss">퇴근?</div>';
+      }
+      html += '<div class="cday' + (day ? ' has' : '') + (date === todayStr() ? ' today' : '') + '" data-d="' + date + '">' + inner + '</div>';
+    }
+    html += '</div><div class="hday" id="histDetail"></div>';
+    $('histList').innerHTML = html;
+    document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d)));
+    $('histSum').textContent = '출근 ' + d.days.length + '일 · 총 ' + hm(total);
+    const pick = histDays[todayStr()] ? todayStr() : (d.days.length ? d.days[0].date : (histYM === ymStr(new Date()) ? todayStr() : histYM + '-01'));
+    showDay(pick);
   }
   $('histBtn').addEventListener('click', () => {
     histYM = ymStr(new Date());
