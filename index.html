@@ -64,6 +64,24 @@
     border:2px solid var(--btn); border-radius:14px; background:#fff; color:var(--btn);
   }
   #withBtn.on { background:#fff3e0; border-color:#e67e22; color:#b35a00; white-space:pre-line; line-height:1.4; }
+
+  /* 내 근무기록 */
+  #histBtn { margin-top:14px; font-size:22px; font-weight:700; padding:12px 22px; border:2px solid #7f8c8d; border-radius:14px; background:#fff; color:#555; }
+  #hist { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:16px 14px; }
+  #histHead { display:flex; align-items:center; justify-content:space-between; width:100%; max-width:420px; }
+  #histHead button { font-size:30px; font-weight:800; width:64px; height:56px; border:none; border-radius:14px; background:#eef2f6; color:#333; }
+  #histHead button:disabled { opacity:.3; }
+  #histMonth { font-size:28px; font-weight:800; }
+  #histSum { font-size:20px; color:#555; margin:8px 0; }
+  #histList { width:100%; max-width:420px; overflow-y:auto; flex:1; text-align:left; }
+  .hday { background:#fff; border-radius:14px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .hdate { font-size:22px; font-weight:800; margin-bottom:4px; }
+  .hrow { font-size:22px; line-height:1.6; }
+  .hrow .in { color:var(--ok); font-weight:800; }
+  .hrow .out { color:#b35a00; font-weight:800; }
+  .hrow .dur { color:#555; font-size:18px; }
+  .hempty { font-size:22px; color:#888; text-align:center; margin-top:40px; }
+  #histClose { margin-top:10px; width:85vw; max-width:360px; font-size:26px; font-weight:800; padding:14px; border:none; border-radius:16px; background:var(--btn); color:#fff; }
   #mates {
     position:fixed; inset:0; z-index:10; background:var(--bg);
     display:flex; flex-direction:column; align-items:center; padding:24px 20px;
@@ -105,6 +123,8 @@
     <button id="punch">출퇴근<br>누르기</button>
     <br>
     <button id="withBtn" class="hidden">같이 찍을 사람 고르기</button>
+    <br>
+    <button id="histBtn">📅 내 근무기록</button>
     <div id="msg"></div>
   </section>
 
@@ -119,6 +139,17 @@
     <div id="mateList"></div>
     <button id="mateDone">다 골랐어요</button>
     <button id="mateClear">아무도 안 고름</button>
+  </section>
+
+  <section id="hist" class="hidden">
+    <div id="histHead">
+      <button id="histPrev">◀</button>
+      <div id="histMonth"></div>
+      <button id="histNext">▶</button>
+    </div>
+    <div id="histSum"></div>
+    <div id="histList"></div>
+    <button id="histClose">닫기</button>
   </section>
 
   <section id="kakao" class="hidden">
@@ -458,6 +489,68 @@
 
   $('punch').addEventListener('click', punch);
   $('withBtn').addEventListener('click', openMates);
+
+  // 내 근무기록: 근무일 기준 달별로, 날짜마다 출근 → 퇴근 (근무시간)
+  let histYM = null;
+  const ymStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  function hm(ms) {
+    const m = Math.round(ms / 60000), h = Math.floor(m / 60), r = m % 60;
+    return (h ? h + '시간 ' : '') + (r ? r + '분' : (h ? '' : '0분'));
+  }
+  async function loadHist() {
+    const [y, m] = histYM.split('-').map(Number);
+    $('histMonth').textContent = y + '년 ' + m + '월';
+    $('histNext').disabled = histYM >= ymStr(new Date());
+    $('histSum').textContent = '불러오는 중…';
+    $('histList').innerHTML = '';
+    let d;
+    try { d = await api('history', { deviceId: deviceId, name: name, month: histYM }); } catch (e) { d = null; }
+    if (!d || !d.ok) { $('histSum').textContent = '불러오지 못했어요. 다시 열어 주세요'; return; }
+    let total = 0, workDays = 0;
+    const box = $('histList');
+    d.days.forEach((day) => {
+      const dt = new Date(day.date + 'T00:00:00');
+      const div = document.createElement('div');
+      div.className = 'hday';
+      let html = '<div class="hdate">' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 (' + WEEK[dt.getDay()] + ')</div>';
+      let open = null, dayTotal = 0;
+      day.items.forEach((it) => {
+        const next = it.day !== day.date ? '다음날 ' : '';
+        if (it.type === '출근') {
+          if (open) html += '<div class="hrow"><span class="in">출근</span> ' + open.time + ' → 퇴근 기록 없음</div>';
+          open = it;
+        } else if (open) {
+          const ms = it.at - open.at; dayTotal += ms;
+          html += '<div class="hrow"><span class="in">출근</span> ' + open.time + ' → <span class="out">퇴근</span> ' + next + it.time +
+            ' <span class="dur">(' + hm(ms) + ')</span></div>';
+          open = null;
+        } else {
+          html += '<div class="hrow"><span class="out">퇴근</span> ' + next + it.time + '</div>';
+        }
+      });
+      if (open) html += '<div class="hrow"><span class="in">출근</span> ' + open.time + (day.date === ymStr(new Date()) + '-' + String(new Date().getDate()).padStart(2, '0') ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
+      if (dayTotal) { total += dayTotal; workDays++; }
+      div.innerHTML = html;
+      box.appendChild(div);
+    });
+    if (!d.days.length) box.innerHTML = '<div class="hempty">이 달에는 기록이 없어요</div>';
+    $('histSum').textContent = d.days.length ? ('출근 ' + d.days.length + '일 · 총 ' + hm(total)) : '';
+  }
+  $('histBtn').addEventListener('click', () => {
+    histYM = ymStr(new Date());
+    $('hist').classList.remove('hidden');
+    loadHist();
+  });
+  $('histPrev').addEventListener('click', () => {
+    const [y, m] = histYM.split('-').map(Number);
+    histYM = ymStr(new Date(y, m - 2, 1)); loadHist();
+  });
+  $('histNext').addEventListener('click', () => {
+    const [y, m] = histYM.split('-').map(Number);
+    histYM = ymStr(new Date(y, m, 1)); loadHist();
+  });
+  $('histClose').addEventListener('click', () => { $('hist').classList.add('hidden'); });
 
   if (!isKakao) {
     render();
