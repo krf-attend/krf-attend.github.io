@@ -747,7 +747,11 @@
   }
 
   // 관리자 기록 수정: 한 직원의 달별 기록 → 시각 고치기 / 지우기 / 빠진 기록 넣기 (원래 기록은 수정이력 탭에 남음)
-  let edNo = null, edName = '', edYM = '';
+  let edNo = null, edName = '', edYM = '', edPlaces = [];
+  // 장소 고르기 버튼 묶음 (cur가 있으면 미리 선택)
+  const placeChips = (cur) => '<div class="arow edPl"><label>장소</label>' +
+    edPlaces.map((p) => '<button class="abtn' + (p === cur ? ' sel' : '') + '" data-ed="pl" data-p="' + esc(p) + '">' + esc(p) + '</button>').join('') + '</div>';
+  const pickedPlace = (box) => { const b = box.querySelector('.edPl .abtn.sel'); return b ? b.dataset.p : ''; };
   async function openRecords(no, nm) {
     edNo = no; edName = nm; edYM = edYM || ymStr(new Date());
     const body = $('adminBody');
@@ -763,6 +767,7 @@
     const list = $('edList');
     if (!list) return;
     if (!d || !d.ok) { list.innerHTML = '<div class="aempty">불러오지 못했어요</div>'; return; }
+    edPlaces = d.places || [];
     if (!d.records.length) { list.innerHTML = '<div class="aempty">이 달 기록이 없어요</div>'; return; }
     list.innerHTML = d.records.map((r) => {
       const dt = new Date(r.wd + 'T00:00:00');
@@ -771,7 +776,7 @@
         '<span class="' + (r.type === '출근' ? 'in' : 'out') + '" style="font-weight:800;color:' + (r.type === '출근' ? 'var(--ok)' : '#b35a00') + '">' + esc(r.type) + '</span> ' +
         (nd ? '다음날 ' : '') + esc(r.time) + ' <span class="asub">' + esc(r.place) + '</span>' +
         (/관리자/.test(r.how) ? '<small>' + esc(r.how) + '</small>' : '') +
-        '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '">시각 고치기</button>' +
+        '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '">시각·장소 고치기</button>' +
         '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
     }).join('');
   }
@@ -796,31 +801,37 @@
         $('edAdd').innerHTML = '<div class="eform"><div class="arow"><label>근무일</label><input type="date" id="edWd" value="' + today + '" max="' + today + '"></div>' +
           '<div class="arow"><button class="abtn sel" data-ed="tin">출근</button><button class="abtn" data-ed="tout">퇴근</button></div>' +
           '<div class="arow"><label>시각</label><input type="time" id="edTime" value="09:00"> <label><input type="checkbox" id="edNd"> 다음날</label></div>' +
+          placeChips('') +
           '<div class="arow"><button class="abtn go" data-ed="addsave">저장</button></div></div>';
         return;
+      }
+      if (k === 'pl') {
+        eb.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === eb)); return;
       }
       if (k === 'tin' || k === 'tout') {
         eb.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === eb)); return;
       }
       if (k === 'addsave') {
         const type = $('edAdd').querySelector('button[data-ed="tout"]').classList.contains('sel') ? '퇴근' : '출근';
-        const wd = $('edWd').value, t = $('edTime').value, nd = $('edNd').checked;
+        const wd = $('edWd').value, t = $('edTime').value, nd = $('edNd').checked, pl = pickedPlace($('edAdd'));
         if (!wd || !t) { alert('근무일과 시각을 넣어 주세요'); return; }
-        if (!confirm(edName + '님 ' + wd + ' ' + type + ' ' + (nd ? '다음날 ' : '') + t + ' 기록을 넣을까요?')) return;
-        edCall({ op: 'add', no: edNo, wd: wd, type: type, time: t, nextDay: nd });
+        if (!pl) { alert('장소를 골라 주세요'); return; }
+        if (!confirm(edName + '님 ' + wd + ' ' + type + ' ' + (nd ? '다음날 ' : '') + t + ' · ' + pl + ' 기록을 넣을까요?')) return;
+        edCall({ op: 'add', no: edNo, wd: wd, type: type, time: t, nextDay: nd, place: pl });
         return;
       }
       if (k === 'editform') {
         rec.querySelector('.edSlot').innerHTML = '<div class="eform"><div class="arow"><label>새 시각</label><input type="time" class="edT" value="' + eb.dataset.time + '"> ' +
           '<label><input type="checkbox" class="edN"' + (eb.dataset.nd === '1' ? ' checked' : '') + '> 다음날</label></div>' +
+          placeChips(eb.dataset.place) +
           '<div class="arow"><button class="abtn go" data-ed="editsave">저장</button></div></div>';
         return;
       }
       if (k === 'editsave') {
-        const t = rec.querySelector('.edT').value, nd = rec.querySelector('.edN').checked;
+        const t = rec.querySelector('.edT').value, nd = rec.querySelector('.edN').checked, pl = pickedPlace(rec);
         if (!t) return;
-        if (!confirm(edName + '님 기록을 ' + (nd ? '다음날 ' : '') + t + '(으)로 고칠까요?\n(원래 시각은 수정이력에 남아요)')) return;
-        edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd });
+        if (!confirm(edName + '님 기록을 ' + (nd ? '다음날 ' : '') + t + (pl ? ' · ' + pl : '') + '(으)로 고칠까요?\n(원래 내용은 수정이력에 남아요)')) return;
+        edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd, place: pl });
         return;
       }
       if (k === 'delete') {
