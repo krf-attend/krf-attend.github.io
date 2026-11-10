@@ -114,18 +114,45 @@
   #installBtn { margin-top:10px; width:100%; font-size:26px; font-weight:800; padding:16px; border:none; border-radius:14px; background:var(--btn); color:#fff; }
   #installClose { margin-top:8px; font-size:16px; color:var(--muted); background:none; border:none; }
 
+  /* 처음 등록: 직원 목록에서 내 이름 고르기, 승인 대기 */
+  #pick h1 { font-size:28px; margin:0 0 14px; line-height:1.4; }
+  #pickList { display:grid; grid-template-columns:1fr 1fr; gap:10px; width:88vw; max-width:380px; margin:0 auto; }
+  .pk { font-size:26px; font-weight:800; padding:14px 4px; border:3px solid var(--btn); border-radius:16px; background:#fff; color:var(--btn); line-height:1.2; }
+  .pk small { display:block; font-size:15px; font-weight:600; color:#777; }
+  #pickAsk { position:fixed; inset:0; z-index:12; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
+  #pickAsk .box { background:#fff; border-radius:20px; padding:26px 20px; width:86vw; max-width:360px; }
+  #pickAskText { font-size:30px; font-weight:800; line-height:1.4; margin-bottom:20px; }
+  #pickYes { width:100%; font-size:30px; font-weight:800; padding:16px; border:none; border-radius:16px; background:var(--btn); color:#fff; }
+  #pickNo { margin-top:12px; font-size:22px; padding:10px 30px; border:2px solid #999; border-radius:12px; background:#fff; color:#555; }
+  #wait .wbig { font-size:30px; font-weight:800; line-height:1.5; margin:10px 0 18px; white-space:pre-line; }
+  #wait .wsub { font-size:21px; color:#555; line-height:1.5; white-space:pre-line; }
+  #waitRe { margin-top:26px; font-size:26px; font-weight:800; padding:14px 34px; border:none; border-radius:14px; background:var(--btn); color:#fff; }
+  #waitOther { margin-top:14px; font-size:18px; color:#777; background:none; border:none; text-decoration:underline; }
+
   .hidden { display:none !important; }
 </style>
 </head>
 <body>
   <div class="brand">KRF출퇴근</div>
 
-  <section id="register" class="hidden">
-    <h1>처음 한 번만<br>이름을 적어 주세요</h1>
-    <input id="nameInput" type="text" placeholder="예: 김영수" autocomplete="name">
-    <br>
-    <button class="save" id="saveBtn">등록</button>
-    <p class="guide">등록 후에는 버튼만 누르시면 됩니다.</p>
+  <section id="pick" class="hidden">
+    <h1>처음 한 번만<br>내 이름을 눌러 주세요</h1>
+    <div id="pickList"><div class="guide">불러오는 중…</div></div>
+  </section>
+
+  <div id="pickAsk" class="hidden">
+    <div class="box">
+      <div id="pickAskText"></div>
+      <button id="pickYes">네, 맞아요</button><br>
+      <button id="pickNo">아니요</button>
+    </div>
+  </div>
+
+  <section id="wait" class="hidden">
+    <div class="wbig" id="waitBig"></div>
+    <div class="wsub" id="waitSub"></div>
+    <button id="waitRe">다시 확인</button><br>
+    <button id="waitOther" class="hidden">다른 이름 고르기</button>
   </section>
 
   <section id="main" class="hidden">
@@ -175,7 +202,6 @@
     <button id="installClose">나중에 하기</button>
   </div>
 
-  <button class="small" id="resetBtn">이름 변경</button>
 
 <script>
   // ▼ 기록 서버(Google Apps Script 웹 앱) 주소
@@ -230,15 +256,68 @@
     return res.json();
   }
 
-  function render() {
-    if (name) {
-      $('register').classList.add('hidden');
-      $('main').classList.remove('hidden');
-      $('nameLabel').textContent = name + ' 님';
-    } else {
-      $('main').classList.add('hidden');
-      $('register').classList.remove('hidden');
+  // 화면 전환: 'main'(출퇴근) / 'pick'(처음 이름 고르기) / 'wait'(승인 대기)
+  let view = '';
+  function render(v) {
+    view = v;
+    ['main', 'pick', 'wait'].forEach((k) => $(k).classList.toggle('hidden', k !== v));
+    if (v === 'main') $('nameLabel').textContent = name ? name + ' 님' : '';
+  }
+
+  // 직원 목록에서 내 이름 고르기 (사번으로 등록 요청 → 관리자 승인)
+  async function showPick() {
+    render('pick');
+    const box = $('pickList');
+    let d;
+    try { d = await api('staff', {}); } catch (e) { d = null; }
+    if (!d || !d.ok) { box.innerHTML = '<div class="guide">목록을 불러오지 못했어요.<br>다시 열어 주세요</div>'; return; }
+    box.innerHTML = '';
+    d.staff.forEach((e) => {
+      const b = document.createElement('button');
+      b.className = 'pk';
+      b.innerHTML = e.name + '<small>' + (e.dept || '') + (e.dup ? ' · ' + e.no + '번' : '') + '</small>';
+      b.addEventListener('click', () => askPick(e));
+      box.appendChild(b);
+    });
+  }
+  function askPick(e) {
+    $('pickAskText').textContent = e.name + '님이\n맞으세요?';
+    $('pickAskText').style.whiteSpace = 'pre-line';
+    $('pickAsk').classList.remove('hidden');
+    speak(e.name + '님이 맞으세요?');
+    $('pickNo').onclick = () => $('pickAsk').classList.add('hidden');
+    $('pickYes').onclick = async () => {
+      $('pickAsk').classList.add('hidden');
+      let r;
+      try { r = await api('register', { deviceId: deviceId, no: e.no }); } catch (err) { r = null; }
+      if (!r || !r.ok) { alertWait('등록하지 못했어요', '잠시 후 다시 해 주세요', true); return; }
+      handleAuth(r);
+    };
+  }
+  function alertWait(big, sub, other) {
+    render('wait');
+    $('waitBig').textContent = big;
+    $('waitSub').textContent = sub;
+    $('waitOther').classList.toggle('hidden', !other);
+  }
+  // 서버가 알려 준 등록 상태에 맞는 화면으로
+  function handleAuth(s) {
+    if (s.auth === 'none') { showPick(); return false; }
+    if (s.auth === 'pending') {
+      alertWait(s.name + '님\n등록 신청했어요', '관리자가 확인하면\n바로 쓸 수 있어요', true);
+      return false;
     }
+    if (s.auth === 'taken') {
+      alertWait(s.name + '님은\n다른 휴대폰에 등록돼 있어요', '휴대폰을 바꾸셨으면\n관리자에게 말씀해 주세요', true);
+      return false;
+    }
+    if (s.auth === 'retired') {
+      alertWait('사용할 수 없어요', '관리자에게 문의해 주세요', false);
+      return false;
+    }
+    if (s.name && s.name !== name) { name = s.name; store.set('name', name); }
+    if (view !== 'main') { render('main'); warmPosition(); }
+    return true;
   }
 
   let myState = '', mates = [], picked = [];
@@ -248,11 +327,13 @@
 
   // '같이 찍을 사람' 버튼: 고를 사람이 있을 때만 보이고, 고른 사람이 있으면 이름을 보여 줌
   function renderWith() {
-    picked = picked.filter((n) => mates.indexOf(n) >= 0);
+    const nos = mates.map((m) => String(m.no));
+    picked = picked.filter((n) => nos.indexOf(String(n)) >= 0);
     const b = $('withBtn');
     b.classList.toggle('hidden', !mates.length);
     if (picked.length) {
-      b.textContent = '✓ ' + picked.join(', ') + '\n같이 ' + nextType() + ' (바꾸기)';
+      const names = mates.filter((m) => picked.map(String).indexOf(String(m.no)) >= 0).map((m) => m.name);
+      b.textContent = '✓ ' + names.join(', ') + '\n같이 ' + nextType() + ' (바꾸기)';
       b.classList.add('on');
     } else {
       b.textContent = '같이 ' + nextType() + '할 사람 고르기';
@@ -289,10 +370,9 @@
   }
 
   async function loadStatus() {
-    if (!name) return;
     try {
-      const s = await api('status', { deviceId: deviceId, name: name });
-      if (s && s.ok) applyStatus(s);
+      const s = await api('status', { deviceId: deviceId });
+      if (s && s.ok && handleAuth(s)) applyStatus(s);
     } catch (e) {
       $('status').textContent = '';
     }
@@ -367,15 +447,16 @@
     const sel = new Set(picked);
     $('mateTitle').innerHTML = '같이 ' + nextType() + '할 사람을<br>눌러서 고르세요';
     box.innerHTML = '';
-    mates.forEach((n) => {
+    mates.forEach((m) => {
+      const n = m.no;
       const b = document.createElement('button');
-      const paint = () => { b.className = 'mate' + (sel.has(n) ? ' on' : ''); b.textContent = (sel.has(n) ? '✓ ' : '') + n; };
+      const paint = () => { b.className = 'mate' + (sel.has(n) ? ' on' : ''); b.textContent = (sel.has(n) ? '✓ ' : '') + m.name; };
       b.addEventListener('click', () => { sel.has(n) ? sel.delete(n) : sel.add(n); paint(); });
       paint();
       box.appendChild(b);
     });
     const close = (list) => { picked = list; $('mates').classList.add('hidden'); renderWith(); };
-    $('mateDone').onclick = () => close(mates.filter((n) => sel.has(n)));
+    $('mateDone').onclick = () => close(mates.filter((m) => sel.has(m.no)).map((m) => m.no));
     $('mateClear').onclick = () => close([]);
     $('mates').classList.remove('hidden');
   }
@@ -383,7 +464,7 @@
   async function punch() {
     const btn = $('punch');
     btn.disabled = true;
-    const alsoNames = picked.slice();
+    const alsoNos = picked.slice();
     show('위치 확인 중…');
 
     const fresh = lastPos && (Date.now() - lastPosAt) < 2 * 60 * 1000;
@@ -392,12 +473,11 @@
 
     try {
       const payload = {
-        name: name,
         deviceId: deviceId,
         lat: c ? c.latitude : '',
         lng: c ? c.longitude : '',
         acc: c ? Math.round(c.accuracy) : '',
-        alsoNames: alsoNames
+        alsoNos: alsoNos
       };
       let d = await api('punch', payload);
       if (d.ok && d.needPlace) {
@@ -409,6 +489,7 @@
         d = await api('punch', payload);
       }
       if (!d.ok) throw new Error(d.error || 'fail');
+      if (d.auth && d.auth !== 'ok') { show(''); handleAuth(d); return; }
 
       let text;
       if (d.duplicate) {
@@ -480,23 +561,10 @@
     else showInstall('오른쪽 위 메뉴(⋮) → [홈 화면에 추가]를\n누르면 아이콘이 생겨요', false);
   }, 3000);
 
-  $('saveBtn').addEventListener('click', () => {
-    const v = $('nameInput').value.trim();
-    if (!v) { $('nameInput').focus(); return; }
-    name = v;
-    store.set('name', v);
-    render();
-    loadStatus();
-    warmPosition();
-  });
-
-  $('resetBtn').addEventListener('click', () => {
-    if (confirm('이름을 다시 등록할까요?')) {
-      store.del('name');
-      name = null;
-      render();
-    }
-  });
+  $('waitRe').addEventListener('click', () => { $('waitBig').textContent = '확인 중…'; $('waitSub').textContent = ''; loadStatus(); });
+  $('waitOther').addEventListener('click', showPick);
+  // 승인 대기 중에는 20초마다 저절로 다시 확인
+  setInterval(() => { if (view === 'wait' && document.visibilityState === 'visible') loadStatus(); }, 20000);
 
   $('punch').addEventListener('click', punch);
   $('withBtn').addEventListener('click', openMates);
@@ -546,7 +614,7 @@
     $('histSum').textContent = '불러오는 중…';
     $('histList').innerHTML = '';
     let d;
-    try { d = await api('history', { deviceId: deviceId, name: name, month: histYM }); } catch (e) { d = null; }
+    try { d = await api('history', { deviceId: deviceId, month: histYM }); } catch (e) { d = null; }
     if (!d || !d.ok) { $('histSum').textContent = '불러오지 못했어요. 다시 열어 주세요'; return; }
     histDays = {};
     let total = 0;
@@ -593,7 +661,7 @@
   $('histClose').addEventListener('click', () => { $('hist').classList.add('hidden'); });
 
   if (!isKakao) {
-    render();
+    render('main');                       // 등록된 폰이면 바로 출퇴근 화면 (서버 확인 후 필요하면 이름 고르기로)
     loadStatus();
     warmPosition();
     // 다른 앱에 갔다가 돌아왔을 때도 다시 확인
