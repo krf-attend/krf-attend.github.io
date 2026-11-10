@@ -129,6 +129,24 @@
   #waitRe { margin-top:26px; font-size:26px; font-weight:800; padding:14px 34px; border:none; border-radius:14px; background:var(--btn); color:#fff; }
   #waitOther { margin-top:14px; font-size:18px; color:#777; background:none; border:none; text-decoration:underline; }
 
+  /* 관리자 */
+  #adminBtn { margin-top:14px; margin-left:6px; font-size:22px; font-weight:700; padding:12px 18px; border:2px solid #8e44ad; border-radius:14px; background:#fff; color:#8e44ad; }
+  #admin { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:14px 12px; }
+  #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; }
+  .asec { font-size:22px; font-weight:800; margin:14px 4px 8px; color:#8e44ad; }
+  .acard { background:#fff; border-radius:14px; padding:12px; margin-bottom:8px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .aname { font-size:22px; font-weight:800; }
+  .asub { font-size:16px; color:#777; margin-left:4px; font-weight:600; }
+  .arow { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
+  .abtn { font-size:18px; font-weight:800; padding:8px 14px; border-radius:10px; border:2px solid #9aa5b1; background:#fff; color:#444; }
+  .abtn.go { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .abtn.no { border-color:var(--warn); color:var(--warn); }
+  .abtn.sel { background:var(--btn); border-color:var(--btn); color:#fff; }
+  .atag { font-size:15px; font-weight:700; padding:3px 8px; border-radius:8px; background:#eef2f6; color:#555; }
+  .atag.wait { background:#fff3e0; color:#b35a00; }
+  .aempty { font-size:18px; color:#888; margin:4px 6px; }
+  #adminClose { margin-top:10px; width:85vw; max-width:360px; font-size:26px; font-weight:800; padding:14px; border:none; border-radius:16px; background:var(--btn); color:#fff; }
+
   .hidden { display:none !important; }
 </style>
 </head>
@@ -162,7 +180,7 @@
     <br>
     <button id="withBtn" class="hidden">같이 찍을 사람 고르기</button>
     <br>
-    <button id="histBtn">📅 내 근무기록</button>
+    <button id="histBtn">📅 내 근무기록</button><button id="adminBtn" class="hidden">⚙ 관리자</button>
     <div id="msg"></div>
   </section>
 
@@ -188,6 +206,12 @@
     <div id="histSum"></div>
     <div id="histList"></div>
     <button id="histClose">닫기</button>
+  </section>
+
+  <section id="admin" class="hidden">
+    <div class="ptitle" style="margin-bottom:4px">⚙ 관리자</div>
+    <div id="adminBody"></div>
+    <button id="adminClose">닫기</button>
   </section>
 
   <section id="kakao" class="hidden">
@@ -316,7 +340,9 @@
       return false;
     }
     if (s.name && s.name !== name) { name = s.name; store.set('name', name); }
+    if (typeof s.admin === 'boolean') $('adminBtn').classList.toggle('hidden', !s.admin);
     if (view !== 'main') { render('main'); warmPosition(); }
+    else $('nameLabel').textContent = name ? name + ' 님' : '';
     return true;
   }
 
@@ -659,6 +685,50 @@
     histYM = ymStr(new Date(y, m, 1)); loadHist();
   });
   $('histClose').addEventListener('click', () => { $('hist').classList.add('hidden'); });
+
+  // 관리자: 등록 신청 승인/거절, 지금 출근 중, 직원 재직상태·기기 초기화
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  async function loadAdmin() {
+    const body = $('adminBody');
+    body.innerHTML = '<div class="aempty">불러오는 중…</div>';
+    let d;
+    try { d = await api('admin', { deviceId: deviceId }); } catch (e) { d = null; }
+    if (!d || !d.ok) { body.innerHTML = '<div class="aempty">불러오지 못했어요</div>'; return; }
+    let h = '<div class="asec">등록 신청 (' + d.pending.length + ')</div>';
+    if (!d.pending.length) h += '<div class="aempty">새 신청이 없어요</div>';
+    d.pending.forEach((e) => {
+      h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + (e.req ? ' · ' + esc(e.req) : '') + '</span>' +
+        '<div class="arow"><button class="abtn go" data-op="approve" data-no="' + esc(e.no) + '">승인</button>' +
+        '<button class="abtn no" data-op="reject" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">거절</button></div></div>';
+    });
+    h += '<div class="asec">지금 출근 중 (' + d.working.length + ')</div>';
+    if (!d.working.length) h += '<div class="aempty">출근 중인 사람이 없어요</div>';
+    else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span></div>').join('') + '</div>';
+    h += '<div class="asec">직원 (' + d.staff.length + ')</div>';
+    d.staff.forEach((e) => {
+      const tag = e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>';
+      h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
+        '<div class="arow">' + ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + v + '</button>').join('') +
+        (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') + '</div></div>';
+    });
+    body.innerHTML = h;
+  }
+  $('adminBody').addEventListener('click', async (ev) => {
+    const b = ev.target.closest('button[data-op]');
+    if (!b) return;
+    const op = b.dataset.op, no = b.dataset.no, nm = b.dataset.name || '', v = b.dataset.v || '';
+    if (op === 'status' && b.classList.contains('sel')) return;
+    const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
+      op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' : '';
+    if (ask && !confirm(ask)) return;
+    b.disabled = true;
+    let r;
+    try { r = await api('adminDo', { deviceId: deviceId, op: op, no: no, value: v }); } catch (e) { r = null; }
+    if (!r || !r.ok) { alert((r && r.error) || '처리하지 못했어요'); b.disabled = false; return; }
+    loadAdmin();
+  });
+  $('adminBtn').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
+  $('adminClose').addEventListener('click', () => { $('admin').classList.add('hidden'); loadStatus(); });
 
   if (!isKakao) {
     render('main');                       // 등록된 폰이면 바로 출퇴근 화면 (서버 확인 후 필요하면 이름 고르기로)
