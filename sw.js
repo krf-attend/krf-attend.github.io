@@ -5,7 +5,8 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  e.respondWith(fetch(e.request));
+  // 앱을 열 때마다 새 화면이 있는지 확인 (바뀐 게 없으면 바로 저장본 사용)
+  e.respondWith(fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => fetch(e.request)));
 });
 
 // 관리자 폰 푸시 알림: 서버는 '신호'만 보내고 문구는 여기서 표시
