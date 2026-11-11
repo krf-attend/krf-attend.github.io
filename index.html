@@ -67,7 +67,7 @@
 
   /* 내 근무기록 */
   #histBtn { margin-top:14px; font-size:22px; font-weight:700; padding:12px 22px; border:2px solid #7f8c8d; border-radius:14px; background:#fff; color:#555; }
-  #hist { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:16px 14px; }
+  #hist { position:fixed; inset:0; z-index:11; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:16px 14px; }
   #histHead { display:flex; align-items:center; justify-content:space-between; width:100%; max-width:420px; }
   #histHead button { font-size:30px; font-weight:800; width:64px; height:56px; border:none; border-radius:14px; background:#eef2f6; color:#333; }
   #histHead button:disabled { opacity:.3; }
@@ -743,7 +743,7 @@
     $('histSum').textContent = '불러오는 중…';
     $('histList').innerHTML = '';
     let d;
-    try { d = await api('history', { deviceId: deviceId, month: histYM }); } catch (e) { d = null; }
+    try { d = await api('history', Object.assign({ deviceId: deviceId, month: histYM }, histNo !== null ? { no: histNo } : {})); } catch (e) { d = null; }
     if (!d || !d.ok) { $('histSum').textContent = '불러오지 못했어요. 다시 열어 주세요'; return; }
     histDays = {};
     let total = 0;
@@ -770,11 +770,20 @@
     html += '</div><div class="hday" id="histDetail"></div>';
     $('histList').innerHTML = html;
     document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d)));
-    $('histSum').textContent = '출근 ' + d.days.length + '일 · 총 ' + hm(total);
+    $('histSum').textContent = (histNo !== null ? histWho + '님 · ' : '') + '출근 ' + d.days.length + '일 · 총 ' + hm(total);
     const pick = histDays[todayStr()] ? todayStr() : (d.days.length ? d.days[0].date : (histYM === ymStr(new Date()) ? todayStr() : histYM + '-01'));
     showDay(pick);
   }
+  // 관리자가 다른 직원 달력을 볼 때는 histNo에 사번 (null이면 내 기록)
+  let histNo = null, histWho = '';
+  function openHist(no, who) {
+    histNo = no; histWho = who || '';
+    histYM = ymStr(new Date());
+    $('hist').classList.remove('hidden');
+    loadHist();
+  }
   $('histBtn').addEventListener('click', () => {
+    histNo = null; histWho = '';
     histYM = ymStr(new Date());
     $('hist').classList.remove('hidden');
     loadHist();
@@ -834,6 +843,7 @@
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
         '<div class="arow">' + ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + v + '</button>').join('') +
         (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') +
+        '<button class="abtn" data-op="cal" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">📅 근무기록</button>' +
         '<button class="abtn" data-op="records" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기록 수정</button>' +
         (d.super ? '<button class="abtn" data-op="admin" data-v="' + (e.admin ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.admin ? '관리자 해제' : '관리자 지정') + '</button>' : '') +
         '</div></div>';
@@ -987,6 +997,7 @@
     if (!b) return;
     const op = b.dataset.op, no = b.dataset.no, nm = b.dataset.name || '', v = b.dataset.v || '';
     if (op === 'records') { edYM = ''; openRecords(no, nm); return; }
+    if (op === 'cal') { openHist(no, nm); return; }
     if (op === 'status' && b.classList.contains('sel')) return;
     const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
       op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' :
