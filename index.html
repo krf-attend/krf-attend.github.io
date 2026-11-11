@@ -130,6 +130,9 @@
   #waitOther { margin-top:14px; font-size:18px; color:#777; background:none; border:none; text-decoration:underline; }
 
   /* 관리자 */
+  #pendNote { display:block; margin:0 auto 12px; width:90vw; max-width:400px; font-size:22px; font-weight:800; padding:14px 10px; border:none; border-radius:14px; background:#c0392b; color:#fff; line-height:1.35; animation:pendBlink 1.6s ease-in-out infinite; }
+  #pendNote.hidden { display:none; }
+  @keyframes pendBlink { 50% { opacity:.75; } }
   #adminBtn { margin-top:14px; margin-left:6px; font-size:22px; font-weight:700; padding:12px 18px; border:2px solid #8e44ad; border-radius:14px; background:#fff; color:#8e44ad; }
   #admin { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:14px 12px; }
   #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; }
@@ -195,6 +198,7 @@
 
   <section id="main" class="hidden">
     <div class="name" id="nameLabel"></div>
+    <button id="pendNote" class="hidden"></button>
     <div id="status">확인 중…</div>
     <button id="punch">출퇴근<br>누르기</button>
     <br>
@@ -361,6 +365,12 @@
     }
     if (s.name && s.name !== name) { name = s.name; store.set('name', name); }
     if (typeof s.admin === 'boolean') $('adminBtn').classList.toggle('hidden', !s.admin);
+    // 관리자: 등록 신청이 있으면 화면 맨 위에 빨간 알림 + 관리자 버튼에 숫자
+    const pc = s.admin ? Number(s.pend) || 0 : 0;
+    $('adminBtn').textContent = '⚙ 관리자' + (pc ? ' (신청 ' + pc + ')' : '');
+    $('pendNote').textContent = '🔔 등록 신청 ' + pc + '명이 기다려요\n눌러서 승인하기';
+    $('pendNote').style.whiteSpace = 'pre-line';
+    $('pendNote').classList.toggle('hidden', !pc);
     // 슈퍼관리자 휴대폰: 출퇴근 버튼 없이 관리자 화면만
     const sup = !!s.super;
     if (sup) { $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden'); }
@@ -964,6 +974,11 @@
   });
   $('adminBtn').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
   $('adminClose').addEventListener('click', () => { $('admin').classList.add('hidden'); loadStatus(); });
+  $('pendNote').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
+  // 관리자 폰은 화면을 켜 두면 1분마다 새 신청 확인
+  setInterval(() => {
+    if (view === 'main' && document.visibilityState === 'visible' && !$('adminBtn').classList.contains('hidden') && $('admin').classList.contains('hidden')) loadStatus();
+  }, 60000);
 
   if (!isKakao) {
     render('main');                       // 등록된 폰이면 바로 출퇴근 화면 (서버 확인 후 필요하면 이름 고르기로)
