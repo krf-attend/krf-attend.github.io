@@ -133,6 +133,8 @@
   #pendNote { display:block; margin:0 auto 12px; width:90vw; max-width:400px; font-size:22px; font-weight:800; padding:14px 10px; border:none; border-radius:14px; background:#c0392b; color:#fff; line-height:1.35; animation:pendBlink 1.6s ease-in-out infinite; }
   #pendNote.hidden { display:none; }
   @keyframes pendBlink { 50% { opacity:.75; } }
+  #pushBtn { display:block; margin:12px auto 0; font-size:20px; font-weight:800; padding:12px 18px; border:2px solid #c0392b; border-radius:14px; background:#fff; color:#c0392b; }
+  #pushBtn.hidden { display:none; }
   #adminBtn { margin-top:14px; margin-left:6px; font-size:22px; font-weight:700; padding:12px 18px; border:2px solid #8e44ad; border-radius:14px; background:#fff; color:#8e44ad; }
   #admin { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:14px 12px; }
   #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; }
@@ -205,6 +207,7 @@
     <button id="withBtn" class="hidden">같이 찍을 사람 고르기</button>
     <br>
     <button id="histBtn">📅 내 근무기록</button><button id="adminBtn" class="hidden">⚙ 관리자</button>
+    <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
   </section>
 
@@ -371,6 +374,8 @@
     $('pendNote').textContent = '🔔 등록 신청 ' + pc + '명이 기다려요\n눌러서 승인하기';
     $('pendNote').style.whiteSpace = 'pre-line';
     $('pendNote').classList.toggle('hidden', !pc);
+    if (s.admin && s.vapid) setupPush(s.vapid); else $('pushBtn').classList.add('hidden');
+    if (s.admin && wantAdmin) { wantAdmin = false; setTimeout(() => { $('admin').classList.remove('hidden'); loadAdmin(); }, 0); }
     // 슈퍼관리자 휴대폰: 출퇴근 버튼 없이 관리자 화면만
     const sup = !!s.super;
     if (sup) { $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden'); }
@@ -381,6 +386,27 @@
     return true;
   }
 
+  // 관리자 푸시 알림: 알림 허용 → 이 폰 주소를 서버에 저장 (주소가 바뀌면 다시 보냄)
+  let wantAdmin = /[?&]admin=1/.test(location.search), vapidKey = '';
+  if (wantAdmin) history.replaceState(null, '', location.pathname);
+  const pushOk = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const b64bin = (s) => { const b = atob((s + '==='.slice((s.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+  async function pushSubscribe() {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64bin(vapidKey) });
+    if (store.get('pushEp') !== sub.endpoint) {
+      const r = await api('pushSub', { deviceId: deviceId, endpoint: sub.endpoint });
+      if (r && r.ok) store.set('pushEp', sub.endpoint); else throw new Error((r && r.error) || 'fail');
+    }
+  }
+  function setupPush(key) {
+    vapidKey = key;
+    const btn = $('pushBtn');
+    if (!pushOk || Notification.permission === 'denied') { btn.classList.add('hidden'); return; }
+    if (Notification.permission === 'granted') { btn.classList.add('hidden'); pushSubscribe().catch(() => {}); return; }
+    btn.classList.remove('hidden');
+  }
   let myState = '', mates = [], picked = [], superOpened = false, places = [], lastMs = 0;
   // 서버와 같은 방식으로 폰에서 장소 판정 (못 맞히면 서버 답을 기다림)
   function localPlace(c) {
@@ -975,6 +1001,16 @@
   $('adminBtn').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
   $('adminClose').addEventListener('click', () => { $('admin').classList.add('hidden'); loadStatus(); });
   $('pendNote').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
+  $('pushBtn').addEventListener('click', async () => {
+    try {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') { show('알림이 꺼져 있어요\n휴대폰 설정에서 알림을 허용해 주세요', 'warn'); return; }
+      await pushSubscribe();
+      $('pushBtn').classList.add('hidden');
+      show('이제 등록 신청이 들어오면\n이 휴대폰으로 알려 드려요', 'ok');
+    } catch (e) { show('알림 설정을 하지 못했어요\n잠시 뒤 다시 눌러 주세요', 'warn'); }
+  });
+  if (pushOk) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data === 'openAdmin') { wantAdmin = true; loadStatus(); } });
   // 관리자 폰은 화면을 켜 두면 1분마다 새 신청 확인
   setInterval(() => {
     if (view === 'main' && document.visibilityState === 'visible' && !$('adminBtn').classList.contains('hidden') && $('admin').classList.contains('hidden')) loadStatus();
