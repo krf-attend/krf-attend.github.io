@@ -815,7 +815,7 @@
     });
     h += '<div class="asec">지금 출근 중 (' + d.working.length + ')</div>';
     if (!d.working.length) h += '<div class="aempty">출근 중인 사람이 없어요</div>';
-    else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span></div>').join('') + '</div>';
+    else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span>' + (w.nogps ? ' <span class="atag wait">📍 위치 없음</span>' : '') + '</div>').join('') + '</div>';
     aStaff = d.staff; aSuper = d.super;
     h += '<div id="aStaff"></div>';
     body.innerHTML = h;
@@ -910,13 +910,22 @@
       '<div class="arow" style="justify-content:center"><button class="abtn" data-ed="prev">◀</button><span class="aname" style="margin:0 10px">' + y + '년 ' + m + '월</span>' +
       '<button class="abtn" data-ed="next"' + (edYM >= ymStr(new Date()) ? ' disabled' : '') + '>▶</button></div>' +
       '<div class="acard"><button class="abtn go" data-ed="addform">+ 빠진 기록 넣기</button><div id="edAdd"></div></div>' +
-      '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>';
+      '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>' +
+      '<div id="edDel"></div>';
     let d;
     try { d = await api('adminRecords', { deviceId: deviceId, no: no, month: edYM }); } catch (e) { d = null; }
     const list = $('edList');
     if (!list) return;
     if (!d || !d.ok) { list.innerHTML = '<div class="aempty">불러오지 못했어요</div>'; return; }
     edPlaces = d.places || [];
+    // 이 달에 지운 기록 → 되살리기
+    const del = d.deleted || [];
+    $('edDel').innerHTML = !del.length ? '' : '<div class="asec" style="color:#777">🗑 지운 기록 (' + del.length + ')</div><div class="acard">' + del.map((r) => {
+      const dt = new Date(r.wd + 'T00:00:00'), nd = r.day !== r.wd;
+      return '<div class="erec" style="opacity:.85"><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' + esc(r.type) + ' ' + (nd ? '다음날 ' : '') + esc(r.time) +
+        ' <span class="asub">' + esc(r.place) + '</span><small>' + esc(r.by) + ' ' + esc(r.when) + ' 지움' + (r.full ? '' : ' · GPS 정보 없이 되살림') + '</small>' +
+        '<div class="arow"><button class="abtn go" data-ed="restore" data-log="' + r.log + '" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">↩ 되살리기</button></div></div>';
+    }).join('') + '</div>';
     if (!d.records.length) { list.innerHTML = '<div class="aempty">이 달 기록이 없어요</div>'; return; }
     list.innerHTML = d.records.map((r) => {
       const dt = new Date(r.wd + 'T00:00:00');
@@ -924,6 +933,7 @@
       return '<div class="erec" data-row="' + r.row + '" data-at="' + r.at + '"><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' +
         '<span class="' + (r.type === '출근' ? 'in' : 'out') + '" style="font-weight:800;color:' + (r.type === '출근' ? 'var(--ok)' : '#b35a00') + '">' + esc(r.type) + '</span> ' +
         (nd ? '다음날 ' : '') + esc(r.time) + ' <span class="asub">' + esc(r.place) + '</span>' +
+        (r.nogps ? ' <span class="atag wait">📍 위치 없음</span>' : '') +
         (/관리자/.test(r.how) ? '<small>' + esc(r.how) + '</small>' : '') +
         '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '" data-type="' + esc(r.type) + '">고치기</button>' +
         '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
@@ -986,6 +996,11 @@
         if (!t) return;
         if (!confirm(edName + '님 기록을 ' + (ty ? ty + ' ' : '') + (nd ? '다음날 ' : '') + t + (pl ? ' · ' + pl : '') + '(으)로 고칠까요?\n(원래 내용은 수정이력에 남아요)')) return;
         edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd, place: pl, type: ty });
+        return;
+      }
+      if (k === 'restore') {
+        if (!confirm(edName + '님 ' + eb.dataset.desc + ' 기록을 되살릴까요?')) return;
+        edCall({ op: 'restore', log: eb.dataset.log });
         return;
       }
       if (k === 'delete') {
