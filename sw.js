@@ -2,31 +2,31 @@
 // 출퇴근 기록(서버 요청)은 건드리지 않고 그대로 보냄
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-// 화면 파일은 폰에 저장해 둔 것을 바로 보여 주고(빠른 시작), 뒤에서 새 버전을 받아 둠
-// 새 버전이 있으면 화면에 알려서 다음에 바로 반영
-const CACHE = 'krf-v1';
+// 화면(index.html)은 항상 인터넷에서 새로 받아 씀 (2.5초 안에 안 오면 폰에 저장해 둔 것으로)
+// 아이콘 같은 나머지 파일은 저장본을 바로 쓰고 뒤에서 새로 받아 둠
+const CACHE = 'krf-v2';
+self.addEventListener('activate', (e) => e.waitUntil(
+  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+));
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
   const path = url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname;
   const key = url.origin + path;
-  e.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    const cached = await cache.match(key);
-    const update = (async () => {
-      const res = await fetch(key, { cache: 'no-cache', credentials: 'same-origin' });
-      if (!res.ok) return res;
-      if (cached && path.endsWith('.html')) {
-        const [a, b] = await Promise.all([cached.clone().text(), res.clone().text()]);
-        await cache.put(key, res.clone());
-        if (a !== b) (await self.clients.matchAll({ type: 'window' })).forEach((c) => c.postMessage('updated'));
-      } else {
-        await cache.put(key, res.clone());
-      }
+  const isPage = e.request.mode === 'navigate' || path.endsWith('.html');
+  const net = caches.open(CACHE).then((cache) =>
+    fetch(key, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => {
+      if (res.ok) cache.put(key, res.clone());
       return res;
-    })();
-    if (cached) { e.waitUntil(update.catch(() => {})); return cached; }
-    return update.catch(() => fetch(e.request));
+    }));
+  e.waitUntil(net.catch(() => {}));
+  e.respondWith((async () => {
+    const cached = await caches.match(key);
+    if (!isPage) return cached || net;
+    if (!cached) return net;
+    const timeout = new Promise((r) => setTimeout(() => r(null), 2500));
+    const fresh = await Promise.race([net.catch(() => null), timeout]);
+    return fresh || cached;
   })());
 });
 
