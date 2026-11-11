@@ -150,6 +150,8 @@
   .atag { font-size:15px; font-weight:700; padding:3px 8px; border-radius:8px; background:#eef2f6; color:#555; }
   .atag.wait { background:#fff3e0; color:#b35a00; }
   .aempty { font-size:18px; color:#888; margin:4px 6px; }
+  .astale { font-size:16px; font-weight:700; color:#8a6d00; background:#fff8db; border-radius:10px; padding:6px 10px; margin:4px 2px 8px; }
+  #adminBody.stale button:not([data-f]) { pointer-events:none; opacity:.45; }
   .afil { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 4px 6px; }
   .afil b { font-size:16px; color:#777; width:36px; }
   .afil .abtn { font-size:16px; padding:5px 11px; }
@@ -801,13 +803,37 @@
 
   // 관리자: 등록 신청 승인/거절, 지금 출근 중, 직원 재직상태·기기 초기화
   const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  async function loadAdmin() {
+  // 관리자 화면: 지난번 내용을 바로 보여 주고(버튼은 잠시 막음), 서버에서 최신 내용이 오면 바꿈
+  let admSeq = 0, admView = 'list';
+  const staleNote = (msg) => '<div class="astale">' + msg + '</div>';
+  function setStale(on, msg) {
     const body = $('adminBody');
-    body.innerHTML = '<div class="aempty">불러오는 중…</div>';
+    body.classList.toggle('stale', on);
+    const n = body.querySelector('.astale');
+    if (n) { if (on) n.textContent = msg; else n.remove(); }
+  }
+  async function loadAdmin() {
+    const body = $('adminBody'), seq = ++admSeq;
+    admView = 'list';
+    let c = null;
+    try { c = JSON.parse(store.get('admCache') || 'null'); } catch (e) {}
+    if (c) drawAdmin(c, true);
+    else { body.classList.remove('stale'); body.innerHTML = '<div class="aempty">불러오는 중…</div>'; }
     let d;
     try { d = await api('admin', { deviceId: deviceId }); } catch (e) { d = null; }
-    if (!d || !d.ok) { body.innerHTML = '<div class="aempty">불러오지 못했어요</div>'; return; }
-    let h = '<div class="asec">등록 신청 (' + d.pending.length + ')</div>';
+    if (d && d.ok) store.set('admCache', JSON.stringify(d));
+    if (seq !== admSeq || admView !== 'list') return;          // 그사이 다른 화면으로 갔으면 그대로 둠
+    if (!d || !d.ok) {
+      if (c) setStale(true, '⚠ 새로 고치지 못했어요. 닫았다가 다시 열어 주세요');
+      else body.innerHTML = '<div class="aempty">불러오지 못했어요</div>';
+      return;
+    }
+    drawAdmin(d, false);
+  }
+  function drawAdmin(d, stale) {
+    const body = $('adminBody');
+    body.classList.toggle('stale', !!stale);
+    let h = (stale ? staleNote('🔄 최신 내용으로 바꾸는 중… (잠시 버튼이 막혀요)') : '') + '<div class="asec">등록 신청 (' + d.pending.length + ')</div>';
     if (!d.pending.length) h += '<div class="aempty">새 신청이 없어요</div>';
     d.pending.forEach((e) => {
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + (e.req ? ' · ' + esc(e.req) : '') + '</span>' +
@@ -906,7 +932,8 @@
   const pickedPlace = (box) => { const b = box.querySelector('.edPl .abtn.sel'); return b ? b.dataset.p : ''; };
   async function openRecords(no, nm) {
     edNo = no; edName = nm; edYM = edYM || ymStr(new Date());
-    const body = $('adminBody');
+    const body = $('adminBody'), seq = ++admSeq, key = 'recCache:' + no + ':' + edYM;
+    admView = 'rec';
     const [y, m] = edYM.split('-').map(Number);
     body.innerHTML = '<div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">← 목록</button>' +
       '<span class="aname">' + esc(nm) + '</span><span></span></div>' +
@@ -915,11 +942,25 @@
       '<div class="acard"><button class="abtn go" data-ed="addform">+ 빠진 기록 넣기</button><div id="edAdd"></div></div>' +
       '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>' +
       '<div id="edDel"></div>';
+    let c = null;
+    try { c = JSON.parse(store.get(key) || 'null'); } catch (e) {}
+    body.classList.remove('stale');
+    if (c) { body.insertAdjacentHTML('afterbegin', staleNote('🔄 최신 내용으로 바꾸는 중… (잠시 버튼이 막혀요)')); fillRecords(c); body.classList.add('stale'); }
     let d;
     try { d = await api('adminRecords', { deviceId: deviceId, no: no, month: edYM }); } catch (e) { d = null; }
+    if (d && d.ok) store.set(key, JSON.stringify(d));
+    if (seq !== admSeq || admView !== 'rec') return;
+    if (!d || !d.ok) {
+      if (c) setStale(true, '⚠ 새로 고치지 못했어요. 목록으로 갔다가 다시 열어 주세요');
+      else if ($('edList')) $('edList').innerHTML = '<div class="aempty">불러오지 못했어요</div>';
+      return;
+    }
+    setStale(false);
+    fillRecords(d);
+  }
+  function fillRecords(d) {
     const list = $('edList');
     if (!list) return;
-    if (!d || !d.ok) { list.innerHTML = '<div class="aempty">불러오지 못했어요</div>'; return; }
     edPlaces = d.places || [];
     // 이 달에 지운 기록 → 되살리기
     const del = d.deleted || [];
@@ -946,6 +987,7 @@
     let r;
     try { r = await api('adminEdit', Object.assign({ deviceId: deviceId }, payload)); } catch (e) { r = null; }
     if (!r || !r.ok) { alert((r && r.error) || '처리하지 못했어요'); return false; }
+    store.del('recCache:' + edNo + ':' + edYM);   // 방금 고친 달은 옛 내용을 보여 주지 않음
     openRecords(edNo, edName);
     return true;
   }
