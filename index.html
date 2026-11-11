@@ -839,12 +839,14 @@
     if (!list.length) h += '<div class="aempty">조건에 맞는 직원이 없어요</div>';
     list.forEach((e) => {
       const tag = (e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>') +
-        (e.admin ? ' <span class="atag" style="background:#f4e6f9;color:#8e44ad">관리자</span>' : '');
+        (e.admin ? ' <span class="atag" style="background:#f4e6f9;color:#8e44ad">관리자</span>' : '') +
+        (e.mate ? ' <span class="atag" style="background:#fff3e0;color:#b35a00">같이찍기</span>' : '');
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
         '<div class="arow">' + ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + v + '</button>').join('') +
         (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') +
         '<button class="abtn" data-op="cal" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">📅 근무기록</button>' +
         '<button class="abtn" data-op="records" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기록 수정</button>' +
+        '<button class="abtn" data-op="mate" data-v="' + (e.mate ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.mate ? '같이찍기 끄기' : '같이찍기 켜기') + '</button>' +
         (d.super ? '<button class="abtn" data-op="admin" data-v="' + (e.admin ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.admin ? '관리자 해제' : '관리자 지정') + '</button>' : '') +
         '</div></div>';
     });
@@ -1018,7 +1020,8 @@
     if (op === 'status' && b.classList.contains('sel')) return;
     const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
       op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' :
-      op === 'admin' ? nm + '님을 관리자' + (v === '1' ? '로 지정할까요?' : '에서 해제할까요?') : '';
+      op === 'admin' ? nm + '님을 관리자' + (v === '1' ? '로 지정할까요?' : '에서 해제할까요?') :
+      op === 'mate' ? nm + '님 앱에 "같이 찍을 사람 고르기" 버튼을 ' + (v === '1' ? '보이게 할까요?' : '숨길까요?') : '';
     if (ask && !confirm(ask)) return;
     b.disabled = true;
     let r;
