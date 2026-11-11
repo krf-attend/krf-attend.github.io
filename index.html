@@ -154,7 +154,7 @@
   .tp { display:inline-flex; align-items:center; gap:6px; }
   .tpc { display:flex; flex-direction:column; align-items:center; gap:4px; }
   .eform .tpc input { width:70px; font-size:32px; font-weight:800; text-align:center; padding:4px; }
-  .tpc button { font-size:20px; font-weight:800; width:70px; padding:4px 0; border:2px solid #9aa5b1; border-radius:10px; background:#fff; color:#444; }
+  .tpc button { touch-action:manipulation; user-select:none; -webkit-user-select:none; font-size:20px; font-weight:800; width:70px; padding:4px 0; border:2px solid #9aa5b1; border-radius:10px; background:#fff; color:#444; }
   .tp > b { font-size:32px; }
   .erec { font-size:20px; line-height:1.5; padding:8px 4px; border-bottom:1px solid #eee; }
   .erec small { color:#777; font-size:14px; display:block; }
@@ -825,7 +825,31 @@
     tp.querySelector('input[type=hidden]').value = p2(h) + ':' + p2(m);
     return [h, m];
   }
-  $('adminBody').addEventListener('input', (ev) => { const tp = ev.target.closest('.tp'); if (tp) tpSync(tp); });
+  $('adminBody').addEventListener('input', (ev) => {
+    const tp = ev.target.closest('.tp'); if (!tp) return;
+    tpSync(tp);
+    // 시를 두 자리 넣으면 분 칸으로 자동 이동
+    if (ev.target.classList.contains('tpH') && ev.target.value.length >= 2) { const M = tp.querySelector('.tpM'); M.focus(); M.select(); }
+  });
+  // ▲▼: 한 번 누르면 1칸, 꾹 누르고 있으면 점점 빠르게 계속 바뀜
+  function tpStep(b) {
+    const tp = b.closest('.tp'), H = tp.querySelector('.tpH'), M = tp.querySelector('.tpM');
+    let [h, m] = tpSync(tp);
+    const d = Number(b.dataset.d);
+    if (b.dataset.p === 'H') h = (h + d + 24) % 24; else m = (m + d + 60) % 60;
+    H.value = p2(h); M.value = p2(m); tpSync(tp);
+  }
+  let tpTimer = null;
+  const tpStop = () => { clearTimeout(tpTimer); tpTimer = null; };
+  $('adminBody').addEventListener('pointerdown', (ev) => {
+    const b = ev.target.closest('button[data-ed="tp"]'); if (!b) return;
+    ev.preventDefault(); tpStop(); tpStep(b);
+    let n = 0;
+    const rep = () => { tpStep(b); n++; tpTimer = setTimeout(rep, n < 6 ? 150 : n < 20 ? 80 : 40); };
+    tpTimer = setTimeout(rep, 450);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((e) => $('adminBody').addEventListener(e, tpStop));
+  $('adminBody').addEventListener('contextmenu', (ev) => { if (ev.target.closest('.tp')) ev.preventDefault(); });
   $('adminBody').addEventListener('focusout', (ev) => {
     const tp = ev.target.closest('.tp'); if (!tp) return;
     const [h, m] = tpSync(tp); tp.querySelector('.tpH').value = p2(h); tp.querySelector('.tpM').value = p2(m);
@@ -886,13 +910,7 @@
           '<div class="arow"><button class="abtn go" data-ed="addsave">저장</button></div></div>';
         return;
       }
-      if (k === 'tp') {
-        const tp = eb.closest('.tp'), H = tp.querySelector('.tpH'), M = tp.querySelector('.tpM');
-        let [h, m] = tpSync(tp);
-        const d = Number(eb.dataset.d);
-        if (eb.dataset.p === 'H') h = (h + d + 24) % 24; else m = (m + d + 60) % 60;
-        H.value = p2(h); M.value = p2(m); tpSync(tp); return;
-      }
+      if (k === 'tp') return;   // ▲▼는 pointerdown에서 처리 (꾹 누르기 지원)
       if (k === 'pl') {
         eb.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === eb)); return;
       }
