@@ -140,6 +140,21 @@
   #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; }
   .asec { font-size:22px; font-weight:800; margin:14px 4px 8px; color:#8e44ad; }
   .acard { background:#fff; border-radius:14px; padding:12px; margin-bottom:8px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .shead { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; cursor:pointer; }
+  .shead .chev { margin-left:auto; font-size:28px; line-height:1; color:#aaa; transition:transform .15s; }
+  .scard.open { box-shadow:0 2px 10px rgba(142,68,173,.25); }
+  .scard.open .chev { transform:rotate(90deg); color:#8e44ad; }
+  .sbody { margin-top:8px; border-top:1px solid #eee; }
+  .sgrp { margin-top:10px; }
+  .sgl { font-size:15px; font-weight:800; color:#999; margin:0 2px 4px; }
+  .seg { display:flex; }
+  .seg .abtn { flex:1; border-radius:0; margin-left:-2px; }
+  .seg .abtn:first-child { border-radius:10px 0 0 10px; margin-left:0; }
+  .seg .abtn:last-child { border-radius:0 10px 10px 0; }
+  .srow { display:flex; align-items:center; justify-content:space-between; padding:6px 2px; font-size:18px; font-weight:700; color:#444; }
+  .srow + .srow { border-top:1px dashed #eee; }
+  .tgl { min-width:80px; }
+  .tgl.on { background:var(--ok); border-color:var(--ok); color:#fff; }
   .aname { font-size:22px; font-weight:800; }
   .asub { font-size:16px; color:#777; margin-left:4px; font-weight:600; }
   .arow { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
@@ -850,7 +865,7 @@
   }
 
   // 직원 목록 거르기 (상태·부서·기기) — 고른 조건은 이 폰에 기억
-  let aStaff = [], aSuper = false, fil = { st: '재직', dp: '전체', dv: '전체' };
+  let aStaff = [], aSuper = false, openNo = null, fil = { st: '재직', dp: '전체', dv: '전체' };
   try { fil = Object.assign(fil, JSON.parse(store.get('adminFil') || '{}')); } catch (e) {}
   function renderStaff() {
     const box = $('aStaff');
@@ -868,14 +883,24 @@
       const tag = (e.registered ? (e.ok ? '<span class="atag">등록됨</span>' : '<span class="atag wait">승인 대기</span>') : '<span class="atag">미등록</span>') +
         (e.admin ? ' <span class="atag" style="background:#f4e6f9;color:#8e44ad">관리자</span>' : '') +
         (e.mate ? ' <span class="atag" style="background:#fff3e0;color:#b35a00">같이찍기</span>' : '');
-      h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' + tag +
-        '<div class="arow">' + ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + v + '</button>').join('') +
-        (e.registered && !e.me ? '<button class="abtn no" data-op="reset" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기기 초기화</button>' : '') +
-        '<button class="abtn" data-op="cal" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">📅 근무기록</button>' +
-        '<button class="abtn" data-op="records" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">기록 수정</button>' +
-        '<button class="abtn" data-op="mate" data-v="' + (e.mate ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.mate ? '같이찍기 끄기' : '같이찍기 켜기') + '</button>' +
-        (d.super ? '<button class="abtn" data-op="admin" data-v="' + (e.admin ? '0' : '1') + '" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">' + (e.admin ? '관리자 해제' : '관리자 지정') + '</button>' : '') +
-        '</div></div>';
+      const D = ' data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '"';
+      const open = String(openNo) === String(e.no);
+      const tgl = (op, on, label) => '<div class="srow"><span>' + label + '</span><button class="abtn tgl' + (on ? ' on' : '') + '" data-op="' + op + '" data-v="' + (on ? '0' : '1') + '"' + D + '>' + (on ? '켜짐' : '꺼짐') + '</button></div>';
+      // 접힌 카드: 이름·부서·표시만. 누르면 펼쳐서 할 일을 묶음별로 보여 줌
+      h += '<div class="acard scard' + (open ? ' open' : '') + '"><div class="shead" data-x="open" data-no="' + esc(e.no) + '">' +
+        '<span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' +
+        (e.status !== '재직' ? '<span class="atag" style="background:#eee;color:#666">' + esc(e.status) + '</span> ' : '') + tag + '<span class="chev">›</span></div>' +
+        (!open ? '' : '<div class="sbody">' +
+          '<div class="sgrp"><div class="sgl">근무 기록</div><div class="arow">' +
+            '<button class="abtn" data-op="cal"' + D + '>📅 달력 보기</button><button class="abtn" data-op="records"' + D + '>✏️ 기록 고치기</button></div></div>' +
+          '<div class="sgrp"><div class="sgl">재직 상태</div><div class="seg">' +
+            ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '"' + D + '>' + v + '</button>').join('') + '</div></div>' +
+          '<div class="sgrp"><div class="sgl">설정</div>' +
+            tgl('mate', e.mate, '같이 찍기 버튼') +
+            (d.super ? tgl('admin', e.admin, '관리자 권한') : '') +
+            (e.registered && !e.me ? '<div class="srow"><span>휴대폰 등록</span><button class="abtn no" data-op="reset"' + D + '>초기화</button></div>' : '') +
+          '</div></div>') +
+        '</div>';
     });
     box.innerHTML = h;
   }
@@ -992,6 +1017,8 @@
     return true;
   }
   $('adminBody').addEventListener('click', async (ev) => {
+    const xb = ev.target.closest('[data-x="open"]');   // 직원 카드 펼치기/접기 (한 번에 하나만)
+    if (xb) { openNo = String(openNo) === xb.dataset.no ? null : xb.dataset.no; renderStaff(); return; }
     const fb = ev.target.closest('button[data-f]');
     if (fb) { fil[fb.dataset.f] = fb.dataset.v; try { store.set('adminFil', JSON.stringify(fil)); } catch (e) {} renderStaff(); return; }
     const eb = ev.target.closest('button[data-ed]');
