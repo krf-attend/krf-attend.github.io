@@ -136,6 +136,8 @@
   @keyframes pendBlink { 50% { opacity:.75; } }
   #pushBtn { display:block; margin:12px auto 0; font-size:20px; font-weight:800; padding:12px 18px; border:2px solid #c0392b; border-radius:14px; background:#fff; color:#c0392b; }
   #pushBtn.hidden { display:none; }
+  #logoutBtn { display:block; margin:28px auto 0; font-size:18px; font-weight:700; padding:10px 22px; border:2px solid #999; border-radius:12px; background:#fff; color:#666; }
+  #logoutBtn.hidden { display:none; }
   #adminBtn { margin-top:14px; margin-left:6px; font-size:22px; font-weight:700; padding:12px 18px; border:2px solid #8e44ad; border-radius:14px; background:#fff; color:#8e44ad; }
   #admin { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:14px 12px; }
   #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; }
@@ -225,9 +227,10 @@
     <button id="withBtn" class="hidden">같이 찍을 사람 고르기</button>
     <br>
     <button id="histBtn">📅 내 근무기록</button><button id="adminBtn" class="hidden">⚙ 관리자</button>
+    <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-12 00:35</div>
+    <div id="ver">화면 버전 2026-11-12 00:45</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -400,6 +403,7 @@
     const sup = !!s.super;
     if (sup) { $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden'); }
     else { $('status').classList.remove('hidden'); $('punch').classList.remove('hidden'); $('histBtn').classList.remove('hidden'); }
+    $('logoutBtn').classList.toggle('hidden', !sup);   // 슈퍼관리자 폰만 로그아웃 가능
     if (sup && !superOpened) { superOpened = true; setTimeout(() => { $('admin').classList.remove('hidden'); loadAdmin(); }, 0); }
     if (view !== 'main') { render('main'); warmPosition(); }
     else $('nameLabel').textContent = name ? name + ' 님' : '';
@@ -1103,6 +1107,19 @@
   });
   $('adminBtn').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
   $('adminClose').addEventListener('click', () => { $('admin').classList.add('hidden'); loadStatus(); });
+  // 슈퍼관리자 로그아웃: 서버에서 이 폰을 빼고, 폰에 저장된 이름·관리자 내용도 지움
+  $('logoutBtn').addEventListener('click', async () => {
+    if (!confirm('이 휴대폰에서 슈퍼관리자 로그아웃할까요?\n(다시 쓰려면 관리자 코드로 등록해야 해요)')) return;
+    let r;
+    try { r = await api('superLeave', { deviceId: deviceId }); } catch (e) { r = null; }
+    if (!r || !r.ok) { alert((r && r.error) || '로그아웃하지 못했어요. 다시 눌러 주세요'); return; }
+    try {
+      if (pushOk) { const reg = await navigator.serviceWorker.ready; const s = await reg.pushManager.getSubscription(); if (s) await s.unsubscribe(); }
+    } catch (e) {}
+    ['name', 'lastStatus', 'admCache', 'pushEp'].forEach((k) => store.del(k));
+    try { Object.keys(localStorage).filter((k) => k.indexOf('recCache:') === 0).forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+    location.reload();
+  });
   $('pendNote').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
   $('pushBtn').addEventListener('click', async () => {
     try {
