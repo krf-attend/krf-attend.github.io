@@ -1132,11 +1132,22 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
     // 새 화면이 올라왔다고 알려 오면, 아무것도 안 하고 있을 때 조용히 새로고침
+    // 바쁠 때(버튼 누르는 중, 관리자·달력 화면을 보는 중)는 미뤄 두었다가 화면을 닫거나 앱으로 돌아올 때 새로고침
+    const busy = () => $('punch').disabled || !$('admin').classList.contains('hidden') || !$('hist').classList.contains('hidden') ||
+      !$('mates').classList.contains('hidden') || !$('pickAsk').classList.contains('hidden');
+    let pendingReload = false;
+    const tryReload = () => { if (pendingReload && !busy()) location.reload(); };
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data !== 'updated') return;
-      const busy = $('punch').disabled || !$('admin').classList.contains('hidden') || !$('hist').classList.contains('hidden') ||
-        !$('mates').classList.contains('hidden') || !$('pickAsk').classList.contains('hidden');
-      if (!busy) location.reload();
+      pendingReload = true;
+      tryReload();
+    });
+    ['adminClose', 'histClose'].forEach((id) => $(id).addEventListener('click', () => setTimeout(tryReload, 50)));
+    // 앱을 켜 둔 채 다른 앱에 갔다 오면 새 화면이 있는지 다시 확인
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      tryReload();
+      fetch('index.html').catch(() => {});
     });
   }
 </script>
