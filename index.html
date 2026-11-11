@@ -925,7 +925,7 @@
         '<span class="' + (r.type === '출근' ? 'in' : 'out') + '" style="font-weight:800;color:' + (r.type === '출근' ? 'var(--ok)' : '#b35a00') + '">' + esc(r.type) + '</span> ' +
         (nd ? '다음날 ' : '') + esc(r.time) + ' <span class="asub">' + esc(r.place) + '</span>' +
         (/관리자/.test(r.how) ? '<small>' + esc(r.how) + '</small>' : '') +
-        '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '">시각·장소 고치기</button>' +
+        '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '" data-type="' + esc(r.type) + '">고치기</button>' +
         '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
     }).join('');
   }
@@ -957,7 +957,7 @@
         return;
       }
       if (k === 'tp') return;   // ▲▼는 pointerdown에서 처리 (꾹 누르기 지원)
-      if (k === 'pl') {
+      if (k === 'pl' || k === 'ty') {
         eb.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === eb)); return;
       }
       if (k === 'tin' || k === 'tout') {
@@ -975,15 +975,17 @@
       if (k === 'editform') {
         rec.querySelector('.edSlot').innerHTML = '<div class="eform"><div class="arow"><label>새 시각</label>' + timePick('class="edT"', eb.dataset.time) + ' ' +
           '<label><input type="checkbox" class="edN"' + (eb.dataset.nd === '1' ? ' checked' : '') + '> 다음날</label></div>' +
+          '<div class="arow edTy"><label>구분</label>' + ['출근', '퇴근'].map((v) => '<button class="abtn' + (v === eb.dataset.type ? ' sel' : '') + '" data-ed="ty" data-t="' + v + '">' + v + '</button>').join('') + '</div>' +
           placeChips(eb.dataset.place) +
           '<div class="arow"><button class="abtn go" data-ed="editsave">저장</button></div></div>';
         return;
       }
       if (k === 'editsave') {
         const t = rec.querySelector('.edT').value, nd = rec.querySelector('.edN').checked, pl = pickedPlace(rec);
+        const tyb = rec.querySelector('.edTy .abtn.sel'), ty = tyb ? tyb.dataset.t : '';
         if (!t) return;
-        if (!confirm(edName + '님 기록을 ' + (nd ? '다음날 ' : '') + t + (pl ? ' · ' + pl : '') + '(으)로 고칠까요?\n(원래 내용은 수정이력에 남아요)')) return;
-        edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd, place: pl });
+        if (!confirm(edName + '님 기록을 ' + (ty ? ty + ' ' : '') + (nd ? '다음날 ' : '') + t + (pl ? ' · ' + pl : '') + '(으)로 고칠까요?\n(원래 내용은 수정이력에 남아요)')) return;
+        edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd, place: pl, type: ty });
         return;
       }
       if (k === 'delete') {
