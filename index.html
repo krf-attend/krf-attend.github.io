@@ -316,11 +316,12 @@
   }
 
   // 직원 목록에서 내 이름 고르기 (사번으로 등록 요청 → 관리자 승인)
-  async function showPick() {
+  async function showPick(pre) {
     render('pick');
     const box = $('pickList');
     let d;
-    try { d = await api('staff', {}); } catch (e) { d = null; }
+    if (Array.isArray(pre)) d = { ok: true, staff: pre };          // 상태 확인 때 같이 받은 목록
+    else { try { d = await api('staff', {}); } catch (e) { d = null; } }
     if (!d || !d.ok) { box.innerHTML = '<div class="guide">목록을 불러오지 못했어요.<br>다시 열어 주세요</div>'; return; }
     box.innerHTML = '';
     d.staff.forEach((e) => {
@@ -353,7 +354,7 @@
   }
   // 서버가 알려 준 등록 상태에 맞는 화면으로
   function handleAuth(s) {
-    if (s.auth === 'none') { showPick(); return false; }
+    if (s.auth === 'none') { showPick(s.staff); return false; }
     if (s.auth === 'pending') {
       alertWait(s.name + '님\n등록 신청했어요', '관리자가 확인하면\n바로 쓸 수 있어요', true);
       return false;
@@ -1061,6 +1062,13 @@
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    // 새 화면이 올라왔다고 알려 오면, 아무것도 안 하고 있을 때 조용히 새로고침
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data !== 'updated') return;
+      const busy = $('punch').disabled || !$('admin').classList.contains('hidden') || !$('hist').classList.contains('hidden') ||
+        !$('mates').classList.contains('hidden') || !$('pickAsk').classList.contains('hidden');
+      if (!busy) location.reload();
+    });
   }
 </script>
 </body>
