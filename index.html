@@ -230,7 +230,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-13 23:50</div>
+    <div id="ver">화면 버전 2026-11-14 01:10</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -758,6 +758,8 @@
     return out;
   }
   const todayStr = () => { const t = new Date(); return ymStr(t) + '-' + String(t.getDate()).padStart(2, '0'); };
+  // 관리자가 보정으로 넣은 시각에는 * 표시
+  const tmS = (it) => it.time + (it.fix ? '*' : '');
   let histDays = {};
   function showDay(date) {
     document.querySelectorAll('.cday.sel').forEach((e) => e.classList.remove('sel'));
@@ -773,18 +775,18 @@
       pairsOf(histDays[k]).forEach((p) => {
         if (!p.out || p.out.day !== date) return;
         carried++;
-        if (p.in) html += '<div class="hrow"><span class="in">출근</span> 전날 ' + p.in.time + ' → <span class="out">퇴근</span> ' + p.out.time +
+        if (p.in) html += '<div class="hrow"><span class="in">출근</span> 전날 ' + tmS(p.in) + ' → <span class="out">퇴근</span> ' + tmS(p.out) +
           ' <span class="dur">(' + hm(p.out.at - p.in.at) + ')</span></div>';
-        else html += '<div class="hrow"><span class="out">퇴근</span> ' + p.out.time + '</div>';
+        else html += '<div class="hrow"><span class="out">퇴근</span> ' + tmS(p.out) + '</div>';
       });
     });
     if (!day) { if (!carried) html += '<div class="hrow" style="color:#888">기록 없음</div>'; }
     else pairsOf(day).forEach((p) => {
       const next = (it) => (it.day !== date ? '다음날 ' : '');
-      if (p.in && p.out) html += '<div class="hrow"><span class="in">출근</span> ' + p.in.time + ' → <span class="out">퇴근</span> ' + next(p.out) + p.out.time +
+      if (p.in && p.out) html += '<div class="hrow"><span class="in">출근</span> ' + tmS(p.in) + ' → <span class="out">퇴근</span> ' + next(p.out) + tmS(p.out) +
         ' <span class="dur">(' + hm(p.out.at - p.in.at) + ')</span></div>';
-      else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + p.in.time + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
-      else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + p.out.time + '</div>';
+      else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + tmS(p.in) + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
+      else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + tmS(p.out) + '</div>';
     });
     $('histDetail').innerHTML = html;
   }
@@ -820,14 +822,14 @@
       if (cell.length) {
         const prevOut = cell.filter((c) => c.it.type === '퇴근' && c.wd !== date);   // 전날 근무의 퇴근
         const ins = cell.filter((c) => c.it.type === '출근'), outs = cell.filter((c) => c.it.type === '퇴근' && c.wd === date);
-        if (prevOut.length) inner += '<div class="cout">' + prevOut[prevOut.length - 1].it.time + '</div>';
-        if (ins.length) inner += '<div class="cin">' + ins[0].it.time + '</div>';
-        if (outs.length) inner += '<div class="cout">' + outs[outs.length - 1].it.time + '</div>';
+        if (prevOut.length) inner += '<div class="cout">' + tmS(prevOut[prevOut.length - 1].it) + '</div>';
+        if (ins.length) inner += '<div class="cin">' + tmS(ins[0].it) + '</div>';
+        if (outs.length) inner += '<div class="cout">' + tmS(outs[outs.length - 1].it) + '</div>';
         else if (ins.length && date !== todayStr() && !(day && day.items.some((it) => it.type === '퇴근'))) inner += '<div class="cmiss">퇴근?</div>';
       }
       html += '<div class="cday' + (day || cell.length ? ' has' : '') + (date === todayStr() ? ' today' : '') + '" data-d="' + date + '">' + inner + '</div>';
     }
-    html += '</div><div class="hday" id="histDetail"></div>';
+    html += '</div>' + (d.days.some((day) => day.items.some((it) => it.fix)) ? '<div style="font-size:13px;color:#888;margin:6px 4px 0">* 표시는 관리자가 보정한 시각이에요</div>' : '') + '<div class="hday" id="histDetail"></div>';
     $('histList').innerHTML = html;
     document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d)));
     $('histSum').textContent = (histNo !== null ? histWho + '님 · ' : '') + '출근 ' + d.days.length + '일 · 총 ' + hm(total);
