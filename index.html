@@ -230,7 +230,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-13 22:00</div>
+    <div id="ver">화면 버전 2026-11-13 23:50</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -766,7 +766,19 @@
     const dt = new Date(date + 'T00:00:00');
     let html = '<div class="hdate">' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 (' + WEEK[dt.getDay()] + ')</div>';
     const day = histDays[date];
-    if (!day) html += '<div class="hrow" style="color:#888">기록 없음</div>';
+    // 전날 출근해서 이 날 퇴근한 근무
+    let carried = 0;
+    Object.keys(histDays).forEach((k) => {
+      if (k === date) return;
+      pairsOf(histDays[k]).forEach((p) => {
+        if (!p.out || p.out.day !== date) return;
+        carried++;
+        if (p.in) html += '<div class="hrow"><span class="in">출근</span> 전날 ' + p.in.time + ' → <span class="out">퇴근</span> ' + p.out.time +
+          ' <span class="dur">(' + hm(p.out.at - p.in.at) + ')</span></div>';
+        else html += '<div class="hrow"><span class="out">퇴근</span> ' + p.out.time + '</div>';
+      });
+    });
+    if (!day) { if (!carried) html += '<div class="hrow" style="color:#888">기록 없음</div>'; }
     else pairsOf(day).forEach((p) => {
       const next = (it) => (it.day !== date ? '다음날 ' : '');
       if (p.in && p.out) html += '<div class="hrow"><span class="in">출근</span> ' + p.in.time + ' → <span class="out">퇴근</span> ' + next(p.out) + p.out.time +
@@ -791,7 +803,12 @@
       histDays[day.date] = day;
       pairsOf(day).forEach((p) => { if (p.in && p.out) total += p.out.at - p.in.at; });
     });
-    // 달력: 일~토 7칸, 칸마다 첫 출근(초록)과 마지막 퇴근(주황)
+    // 달력: 일~토 7칸, 칸마다 첫 출근(초록)과 마지막 퇴근(주황). 다음 날 퇴근은 실제 퇴근한 날 칸에 보여 줌
+    const cellOf = {};
+    d.days.forEach((day) => day.items.forEach((it) => {
+      const k = (it.day && it.day.slice(0, 7) === histYM) ? it.day : day.date;   // 다음 달로 넘어가는 퇴근만 근무일 칸에
+      (cellOf[k] = cellOf[k] || []).push({ it: it, wd: day.date });
+    }));
     let html = '<div class="cal">' + WEEK.map((w, k) => '<div class="cw' + (k === 0 ? ' sun' : k === 6 ? ' sat' : '') + '">' + w + '</div>').join('');
     const first = new Date(y, m - 1, 1).getDay(), last = new Date(y, m, 0).getDate();
     for (let k = 0; k < first; k++) html += '<div></div>';
@@ -799,13 +816,16 @@
       const date = histYM + '-' + String(dd).padStart(2, '0');
       const day = histDays[date], wd = (first + dd - 1) % 7;
       let inner = '<div class="cnum' + (wd === 0 ? ' sun' : wd === 6 ? ' sat' : '') + '">' + dd + '</div>';
-      if (day) {
-        const ins = day.items.filter((it) => it.type === '출근'), outs = day.items.filter((it) => it.type === '퇴근');
-        if (ins.length) inner += '<div class="cin">' + ins[0].time + '</div>';
-        if (outs.length) inner += '<div class="cout">' + outs[outs.length - 1].time + '</div>';
-        else if (date !== todayStr()) inner += '<div class="cmiss">퇴근?</div>';
+      const cell = (cellOf[date] || []).slice().sort((a, b) => a.it.at - b.it.at);
+      if (cell.length) {
+        const prevOut = cell.filter((c) => c.it.type === '퇴근' && c.wd !== date);   // 전날 근무의 퇴근
+        const ins = cell.filter((c) => c.it.type === '출근'), outs = cell.filter((c) => c.it.type === '퇴근' && c.wd === date);
+        if (prevOut.length) inner += '<div class="cout">' + prevOut[prevOut.length - 1].it.time + '</div>';
+        if (ins.length) inner += '<div class="cin">' + ins[0].it.time + '</div>';
+        if (outs.length) inner += '<div class="cout">' + outs[outs.length - 1].it.time + '</div>';
+        else if (ins.length && date !== todayStr() && !(day && day.items.some((it) => it.type === '퇴근'))) inner += '<div class="cmiss">퇴근?</div>';
       }
-      html += '<div class="cday' + (day ? ' has' : '') + (date === todayStr() ? ' today' : '') + '" data-d="' + date + '">' + inner + '</div>';
+      html += '<div class="cday' + (day || cell.length ? ' has' : '') + (date === todayStr() ? ' today' : '') + '" data-d="' + date + '">' + inner + '</div>';
     }
     html += '</div><div class="hday" id="histDetail"></div>';
     $('histList').innerHTML = html;
