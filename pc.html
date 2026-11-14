@@ -70,6 +70,12 @@
   .ed select, .ed input[type=time] { border:1px solid transparent; border-radius:6px; padding:3px 4px; background:transparent; }
   .ed select:hover, .ed input[type=time]:hover, .ed select:focus, .ed input[type=time]:focus { border-color:#8fb2e8; background:#fff; }
   .ed.pend td { background:#fffbe6; }
+  .cards { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; min-width:320px; flex:1; }
+  .card h3 { margin:0 0 8px; font-size:17px; }
+  .card .line { display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid #f0f2f5; }
+  .sub2 { color:var(--sub); font-size:14px; }
+  .list input[type=time], .list select.mP { border:1px solid #b9c0c9; border-radius:6px; padding:3px 4px; background:#fff; }
   .tag { font-size:11px; background:#fff3cd; color:#8a6d00; border-radius:6px; padding:1px 6px; margin-left:4px; }
   /* 옆 칸(하루 기록) */
   #drawer { width:440px; background:#fff; border-left:1px solid var(--line); padding:16px; overflow:auto; flex:none; }
@@ -106,8 +112,11 @@
 <div id="app" class="hidden">
   <aside>
     <h1>KRF출퇴근<br>관리</h1>
+    <button class="nav" data-view="today">🏠 오늘 현황</button>
     <button class="nav" data-view="grid">📅 월간 표</button>
     <button class="nav" data-view="list">📋 기록</button>
+    <button class="nav" data-view="miss">🔎 빠진 기록</button>
+    <button class="nav" data-view="log">🕘 수정 이력</button>
     <div class="foot">
       <div id="who"></div>
       <div id="ver"></div>
@@ -137,7 +146,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 11:32';
+  const VER = '2026-11-14 11:49';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -181,7 +190,9 @@
     return out;
   }
 
-  let ym = ymStr(new Date()), view = store.get('pcView') === 'list' ? 'list' : 'grid', D = null, loadSeq = 0, idSeq = 0;
+  const VIEWS = ['today', 'grid', 'list', 'miss', 'log'];
+  let ym = ymStr(new Date()), view = VIEWS.indexOf(store.get('pcView')) >= 0 ? store.get('pcView') : 'grid', D = null, loadSeq = 0, idSeq = 0;
+  const needD = () => view === 'grid' || view === 'list' || view === 'miss';
   const cache = {};
   let fil = { no: '', type: '', place: '', fix: false }, sort = { k: 'wd', dir: -1 }, dk = null;
 
@@ -194,6 +205,8 @@
       $('pair').classList.add('hidden'); $('app').classList.remove('hidden');
       $('ver').textContent = '화면 버전 ' + VER;
       load();
+      if (view === 'today') loadToday();
+      if (view === 'log') loadLog();
       return;
     }
     $('app').classList.add('hidden'); $('pair').classList.remove('hidden');
@@ -212,12 +225,12 @@
     const seq = ++loadSeq, m = ym;
     setYm();
     if (cache[m]) { D = cache[m]; render(); }
-    else if (!silent) { D = null; closeDrawer(); $('filters').innerHTML = ''; $('view').innerHTML = '<div class="empty">불러오는 중…</div>'; }
+    else if (!silent) { D = null; closeDrawer(); if (needD()) { $('filters').innerHTML = ''; $('view').innerHTML = '<div class="empty">불러오는 중…</div>'; } }
     let d; try { d = await api('adminMonthRecs', { deviceId: deviceId, month: m }); } catch (e) { d = null; }
     if (seq !== loadSeq) return;
     if (d && !d.ok && d.error === 'not admin') { boot(); return; }
     if (!d || !d.ok) {
-      if (!cache[m]) $('view').innerHTML = '<div class="empty">불러오지 못했어요. 인터넷 연결을 확인하고 [새로 고침]을 눌러 주세요</div>';
+      if (!cache[m] && needD()) $('view').innerHTML = '<div class="empty">불러오지 못했어요. 인터넷 연결을 확인하고 [새로 고침]을 눌러 주세요</div>';
       return;
     }
     if (busy || q.length) return;                    // 저장 중이면 화면(고친 내용)을 그대로 둠
@@ -250,6 +263,7 @@
     }
     busy = false; stat();
     if (needReload) { needReload = false; load(true); }
+    if (view === 'log') { delete LC[ym]; loadLog(); }
   }
   window.addEventListener('beforeunload', (e) => { if (busy || q.length) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -430,17 +444,113 @@
     h += '</tbody></table>';
     $('view').innerHTML = rows.length ? h : '<div class="empty">조건에 맞는 기록이 없어요</div>';
   }
+  // ── 빠진 기록: 짝이 안 맞는 출근·퇴근을 모아 보여 주고 그 줄에서 바로 넣음 ──
+  function missRows() {
+    const by = byNoWd(), out = [], today = todayStr();
+    gridStaff(by).forEach((s) => Object.keys(by[s.no] || {}).sort().forEach((wd) => pairs(by[s.no][wd]).forEach((p) => {
+      if (p.in && !p.out) { if (wd === today || Date.now() - p.in.at < 16 * 3600 * 1000) return; out.push({ s: s, wd: wd, has: p.in, miss: '퇴근' }); }
+      else if (!p.in && p.out) out.push({ s: s, wd: wd, has: p.out, miss: '출근' });
+    })));
+    return out;
+  }
+  function missGuess(r) {
+    const hh = Number(r.has.time.slice(0, 2));
+    if (r.miss === '퇴근') return hh >= 14 ? { time: '09:00', nd: true } : { time: '18:00', nd: false };
+    return { time: r.has.day !== r.wd ? '17:00' : '09:00', nd: false };
+  }
+  function renderMiss() {
+    $('filters').innerHTML = '';
+    const rows = missRows();
+    if (!rows.length) { $('view').innerHTML = '<div class="empty">이 달에는 빠진 기록이 없어요 👍</div>'; return; }
+    $('view').innerHTML = '<div style="margin-bottom:8px;color:#6b7280;font-size:13px">모두 ' + rows.length + '건 · 시각과 장소를 확인하고 [넣기]를 누르세요 (시각은 미리 짐작해 둔 값이에요)</div>' +
+      '<table class="list"><thead><tr><th>이름</th><th>근무일</th><th>있는 기록</th><th>빠진 것</th><th>넣을 시각</th><th>다음날</th><th>장소</th><th></th></tr></thead><tbody>' +
+      rows.map((r) => {
+        const dt = new Date(r.wd + 'T00:00:00'), g = missGuess(r);
+        return '<tr class="ed" data-no="' + esc(r.s.no) + '" data-wd="' + r.wd + '" data-type="' + r.miss + '"><td><b>' + esc(r.s.name) + '</b></td>' +
+          '<td>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</td>' +
+          '<td>' + esc(r.has.type) + ' ' + (r.has.day !== r.wd ? '다음날 ' : '') + esc(r.has.time) + (r.has.fix ? '*' : '') + ' <span style="color:#6b7280">' + esc(r.has.place) + '</span></td>' +
+          '<td class="miss" style="font-size:14px;font-weight:700">' + r.miss + ' 없음</td>' +
+          '<td><input type="time" class="mT" value="' + g.time + '"></td><td><label><input type="checkbox" class="mN"' + (g.nd ? ' checked' : '') + '> 다음날</label></td>' +
+          '<td>' + placeSel(D.places.indexOf(r.has.place) >= 0 ? r.has.place : '', 'class="mP"') + '</td><td><button class="btn go" data-act="missAdd">넣기</button></td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // ── 오늘 현황: 등록 신청 승인·거절, 지금 출근 중 ──
+  let T = null, tSeq = 0;
+  async function loadToday() {
+    const seq = ++tSeq;
+    let d; try { d = await api('admin', { deviceId: deviceId }); } catch (e) { d = null; }
+    if (seq !== tSeq) return;
+    T = (d && d.ok) ? d : (T || 'err');
+    if (view === 'today') renderToday();
+  }
+  function renderToday() {
+    $('filters').innerHTML = '';
+    if (!T) { $('view').innerHTML = '<div class="empty">불러오는 중…</div>'; return; }
+    if (T === 'err') { $('view').innerHTML = '<div class="empty">불러오지 못했어요. [새로 고침]을 눌러 주세요</div>'; return; }
+    const cur = cache[ymStr(new Date())];
+    let nMiss = '';
+    if (cur) { const keep = D; D = cur; nMiss = missRows().length; D = keep; }
+    let h = '<div class="cards"><div class="card"><h3>등록 신청 (' + T.pending.length + ')</h3>';
+    h += T.pending.length ? T.pending.map((e) => '<div class="line"><b>' + esc(e.name) + '</b> <span class="sub2">' + esc(e.dept || '') + (e.req ? ' · ' + esc(e.req) : '') + '</span><span class="sp"></span>' +
+      '<button class="btn go" data-act="approve" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">승인</button> <button class="btn no" data-act="reject" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '">거절</button></div>').join('')
+      : '<div class="sub2">새 신청이 없어요</div>';
+    h += '</div><div class="card"><h3>지금 출근 중 (' + T.working.length + ')</h3>';
+    h += T.working.length ? T.working.map((w) => '<div class="line"><b>' + esc(w.name) + '</b> <span class="sub2">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span>' + (w.nogps ? '<span class="tag">위치 없음</span>' : '') + '</div>').join('')
+      : '<div class="sub2">출근 중인 사람이 없어요</div>';
+    h += '</div><div class="card"><h3>이번 달 빠진 기록' + (nMiss === '' ? '' : ' (' + nMiss + ')') + '</h3><div class="line"><span class="sub2">' +
+      (nMiss === '' ? '빠진 기록 화면에서 볼 수 있어요' : nMiss ? '출근이나 퇴근 한쪽만 있는 기록이 ' + nMiss + '건 있어요' : '빠진 기록이 없어요 👍') + '</span><span class="sp"></span>' +
+      '<button class="btn" data-act="goMiss">빠진 기록 보기</button></div></div></div>';
+    $('view').innerHTML = h;
+  }
+
+  // ── 수정 이력: 그 달(근무일 기준)에 관리자가 넣고·고치고·지운 것. 지운 기록은 여기서 되살림 ──
+  const LC = {};
+  let lSeq = 0;
+  async function loadLog() {
+    const seq = ++lSeq, m = ym;
+    if (view === 'log') renderLog();
+    let d; try { d = await api('adminLog', { deviceId: deviceId, month: m }); } catch (e) { d = null; }
+    if (seq !== lSeq) return;
+    LC[m] = (d && d.ok) ? d.logs : (LC[m] && LC[m] !== 'err' ? LC[m] : 'err');
+    if (view === 'log') renderLog();
+  }
+  function renderLog() {
+    $('filters').innerHTML = '';
+    const a = LC[ym];
+    if (a === undefined) { $('view').innerHTML = '<div class="empty">불러오는 중…</div>'; return; }
+    if (a === 'err') { $('view').innerHTML = '<div class="empty">불러오지 못했어요. [새로 고침]을 눌러 주세요</div>'; return; }
+    if (!a.length) { $('view').innerHTML = '<div class="empty">이 달 기록을 고친 이력이 없어요</div>'; return; }
+    $('view').innerHTML = '<div style="margin-bottom:8px;color:#6b7280;font-size:13px">' + a.length + '건 · 근무일이 이 달인 기록을 고친 이력이에요 (최근 것부터)</div>' +
+      '<table class="list"><thead><tr><th>처리한 때</th><th>관리자</th><th>작업</th><th>이름</th><th>근무일</th><th>구분</th><th>원래 시각</th><th>새 시각</th><th>장소</th><th></th></tr></thead><tbody>' +
+      a.map((L) => '<tr><td>' + esc(L.when) + '</td><td>' + esc(L.by) + '</td><td><b>' + esc(L.op) + '</b></td><td>' + esc(L.name) + '</td><td>' + esc(L.wd.slice(5).replace('-', '/')) + '</td><td>' + esc(L.type) + '</td>' +
+        '<td>' + esc(L.before) + '</td><td>' + esc(L.after) + '</td><td>' + esc(L.place) + '</td><td>' +
+        (L.can ? '<button class="btn go" data-act="restore" data-log="' + L.log + '" data-desc="' + esc(L.name + ' ' + L.wd.slice(5) + ' ' + L.type + ' ' + L.before) + '">↩ 되살리기</button>' : '') + '</td></tr>').join('') +
+      '</tbody></table>';
+  }
+
   function render() {
     setYm();
+    if (view !== 'grid') $('drawer').classList.add('hidden');
+    if (view === 'today') { renderToday(); return; }
+    if (view === 'log') { renderLog(); return; }
     if (!D) return;
-    if (view === 'grid') { renderGrid(); renderDrawer(); } else { $('drawer').classList.add('hidden'); renderList(); }
+    if (view === 'grid') { renderGrid(); renderDrawer(); } else if (view === 'miss') renderMiss(); else renderList();
   }
 
   // ── 엑셀(CSV)로 내려받기: 지금 보고 있는 표 그대로 ──
   function csv() {
-    if (!D) return;
     const rows = [];
-    if (view === 'grid') {
+    if (view === 'miss' || view === 'log') {         // 화면에 보이는 표를 그대로
+      const tb = document.querySelector('#view table');
+      if (!tb) { alert('내려받을 표가 없어요'); return; }
+      tb.querySelectorAll('tr').forEach((tr) => rows.push(Array.from(tr.children).slice(0, -1).map((c) => {
+        const t = c.querySelector('input[type=time]'), k = c.querySelector('input[type=checkbox]'), s = c.querySelector('select');
+        return t ? t.value : k ? (k.checked ? '다음날' : '') : s ? s.value : c.innerText.trim();
+      })));
+    } else if (view === 'today') { alert('오늘 현황은 내려받을 표가 없어요. 월간 표나 기록에서 눌러 주세요'); return; }
+    else if (!D) return;
+    else if (view === 'grid') {
       const [y, m] = ym.split('-').map(Number), last = new Date(y, m, 0).getDate(), by = byNoWd();
       const head = ['직원', '부서']; for (let d = 1; d <= last; d++) head.push(d + '일'); rows.push(head);
       gridStaff(by).forEach((s) => {
@@ -458,15 +568,16 @@
     const text = '﻿' + rows.map((l) => l.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'KRF출퇴근_' + ym + (view === 'grid' ? '_월간표' : '_기록') + '.csv';
+    a.download = 'KRF출퇴근_' + ym + ({ grid: '_월간표', list: '_기록', miss: '_빠진기록', log: '_수정이력' }[view] || '') + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
   }
 
   // ── 누르기·바꾸기 ──
-  function moveMonth(n) { const [y, m] = ym.split('-').map(Number); ym = ymStr(new Date(y, m - 1 + n, 1)); if (ym > ymStr(new Date())) ym = ymStr(new Date()); closeDrawer(); load(); }
+  function moveMonth(n) { const [y, m] = ym.split('-').map(Number); ym = ymStr(new Date(y, m - 1 + n, 1)); if (ym > ymStr(new Date())) ym = ymStr(new Date()); closeDrawer(); load(); if (view === 'log') loadLog(); }
+  function go(v) { view = v; store.set('pcView', v); render(); if (v === 'today') loadToday(); if (v === 'log') loadLog(); }
   document.addEventListener('click', async (ev) => {
     const nav = ev.target.closest('aside .nav');
-    if (nav) { view = nav.dataset.view; store.set('pcView', view); render(); return; }
+    if (nav) { go(nav.dataset.view); return; }
     const sh = ev.target.closest('th[data-sort]');
     if (sh) { const k = sh.dataset.sort; sort = { k: k, dir: sort.k === k ? -sort.dir : 1 }; renderList(); return; }
     const b = ev.target.closest('[data-act]');
@@ -474,8 +585,36 @@
       const act = b.dataset.act;
       if (act === 'prev') return moveMonth(-1);
       if (act === 'next') return moveMonth(1);
-      if (act === 'now') { ym = ymStr(new Date()); closeDrawer(); return load(); }
-      if (act === 'reload') { if (busy || q.length) { alert('저장이 끝난 뒤에 눌러 주세요'); return; } delete cache[ym]; return load(); }
+      if (act === 'now') { ym = ymStr(new Date()); closeDrawer(); load(); if (view === 'log') loadLog(); return; }
+      if (act === 'reload') {
+        if (busy || q.length) { alert('저장이 끝난 뒤에 눌러 주세요'); return; }
+        delete cache[ym]; delete LC[ym]; load();
+        if (view === 'today') { T = null; renderToday(); loadToday(); }
+        if (view === 'log') loadLog();
+        return;
+      }
+      if (act === 'goMiss') { ym = ymStr(new Date()); go('miss'); load(); return; }
+      if (act === 'missAdd') {
+        const tr = b.closest('tr');
+        addRec(tr.dataset.no, tr.dataset.wd, { type: tr.dataset.type, time: tr.querySelector('.mT').value, nd: tr.querySelector('.mN').checked, place: tr.querySelector('.mP').value });
+        return;
+      }
+      if (act === 'approve' || act === 'reject') {
+        if (act === 'reject' && !confirm(b.dataset.name + '님의 등록 신청을 거절할까요?')) return;
+        b.disabled = true;
+        let r = null; try { r = await api('adminDo', { deviceId: deviceId, op: act, no: b.dataset.no }); } catch (e) { r = null; }
+        if (!r || !r.ok) alert((r && r.error) || '처리하지 못했어요. 인터넷 연결을 확인해 주세요');
+        else toast(b.dataset.name + '님 등록 신청을 ' + (act === 'approve' ? '승인했어요' : '거절했어요'));
+        loadToday();
+        return;
+      }
+      if (act === 'restore') {
+        if (!confirm(b.dataset.desc + ' 기록을 되살릴까요?')) return;
+        b.disabled = true;
+        needReload = true;
+        enqueue({ op: 'restore', log: Number(b.dataset.log) }, b.dataset.desc + ' 되살리기');
+        return;
+      }
       if (act === 'csv') return csv();
       if (act === 'closeDrawer') { closeDrawer(); return; }
       if (act === 'undo') { const t = $('toast'); if (t._undo) { const f = t._undo; t._undo = null; t.classList.add('hidden'); f(); } return; }
