@@ -230,7 +230,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 10:20</div>
+    <div id="ver">화면 버전 2026-11-14 10:40</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -895,15 +895,39 @@
     });
     $('histDetail').innerHTML = html;
   }
+  // 한 번 본 달은 기억해 두었다가 바로 보여 주고, 옆 달은 미리 받아 둠
+  const histCache = {};
+  function histKey(mm) { return (histNo === null ? 'me' : histNo) + '|' + mm; }
+  function histFetch(mm) {
+    const k = histKey(mm), c = histCache[k] = histCache[k] || {};
+    if (c.p) return c.p;
+    c.p = api('history', Object.assign({ deviceId: deviceId, month: mm }, histNo !== null ? { no: histNo } : {}))
+      .then((d) => { c.p = null; if (d && d.ok) { c.d = d; c.t = Date.now(); } return d; })
+      .catch(() => { c.p = null; return null; });
+    return c.p;
+  }
+  function histWarm() {
+    const [y, m] = histYM.split('-').map(Number), nowYM = ymStr(new Date());
+    [ymStr(new Date(y, m - 2, 1)), ymStr(new Date(y, m, 1))].forEach((mm) => {
+      if (mm <= nowYM && !(histCache[histKey(mm)] || {}).d) histFetch(mm);
+    });
+  }
   async function loadHist() {
     const [y, m] = histYM.split('-').map(Number);
     $('histMonth').textContent = y + '년 ' + m + '월';
     $('histNext').disabled = histYM >= ymStr(new Date());
-    $('histSum').textContent = '불러오는 중…';
-    $('histList').innerHTML = '';
+    const ym = histYM, no = histNo, c = histCache[histKey(ym)], had = !!(c && c.d), sig = had ? JSON.stringify(c.d.days) : '';
+    if (had) { drawHist(c.d); if (Date.now() - c.t < 60000) { histWarm(); return; } }
+    else { $('histSum').textContent = '불러오는 중…'; $('histList').innerHTML = ''; }
     let d;
-    try { d = await api('history', Object.assign({ deviceId: deviceId, month: histYM }, histNo !== null ? { no: histNo } : {})); } catch (e) { d = null; }
-    if (!d || !d.ok) { $('histSum').textContent = '불러오지 못했어요. 다시 열어 주세요'; return; }
+    d = await histFetch(ym);
+    if (histYM !== ym || histNo !== no) return;
+    if (!d || !d.ok) { if (!had) $('histSum').textContent = '불러오지 못했어요. 다시 열어 주세요'; return; }
+    if (!had || JSON.stringify(d.days) !== sig) drawHist(d);
+    histWarm();
+  }
+  function drawHist(d) {
+    const [y, m] = histYM.split('-').map(Number);
     histDays = {};
     let total = 0;
     d.days.forEach((day) => {
@@ -944,7 +968,7 @@
   // 관리자가 다른 직원 달력을 볼 때는 histNo에 사번 (null이면 내 기록)
   let histNo = null, histWho = '';
   function openHist(no, who) {
-    histNo = no; histWho = who || '';
+    histNo = no; histWho = who || ''; for (const k in histCache) histCache[k].t = 0;
     histYM = ymStr(new Date());
     $('hist').classList.remove('hidden');
     loadHist();
