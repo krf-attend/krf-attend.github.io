@@ -117,9 +117,25 @@
   .form b { font-size:14px; margin-right:4px; }
   textarea { width:100%; min-height:150px; font-family:inherit; font-size:13.5px; line-height:1.6; resize:vertical; }
   /* 근태기록표 */
-  .sheet { table-layout:fixed; border-radius:4px; border-color:#cfd4dc; }
-  .sheet td { font-size:11.5px; padding:2px 3px; white-space:pre-line; line-height:1.35; overflow:hidden; text-overflow:clip; border-right:1px solid #e3e6eb; border-bottom:1px solid #e3e6eb; text-align:center; font-variant-numeric:tabular-nums; height:20px; }
-  .sheet tbody tr:last-child td { border-bottom:1px solid #e3e6eb; }
+  /* 근태기록표 (예전 양식의 줄 구성 그대로, 색은 깔끔하게): 날짜 줄 · 사원 줄 · 출근 줄 · 퇴근 줄 · 빈 줄 */
+  .ks { width:100%; min-width:1000px; max-width:1500px; table-layout:fixed; border-collapse:collapse; border:none; border-radius:0; background:#fff; font-family:'Pretendard Variable', 'Malgun Gothic', sans-serif; color:#191f28; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .ks td { padding:1px 2px; text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; }
+  .ks .ks-ttl { font-size:24px; font-weight:800; color:#191f28; letter-spacing:2px; padding:4px 0 8px; }
+  .ks .ks-rl, .ks .ks-rg { text-align:left; font-size:13.5px; color:#4e5968; border-bottom:2px solid #333d4b; padding:4px 4px 6px; }
+  .ks .ks-rl { font-weight:700; color:#191f28; }
+  .ks tr.ks-gap td { height:12px; border:none; padding:0; }
+  .ks tr.ks-day td { background:#f2f4f6; border:1px solid #d1d6db; color:#4e5968; font-weight:600; font-size:12.5px; height:22px; }
+  .ks tr.ks-day td.sun { color:#e5383b; } .ks tr.ks-day td.sat { color:#3182f6; }
+  .ks tr.ks-info td { background:#e8f3ff; border:1px solid #d1d6db; text-align:left; font-size:13px; height:24px; padding-left:6px; color:#191f28; }
+  .ks tr.ks-info td.lb { color:#6b7684; font-size:12px; }
+  .ks tr.ks-info td.nm { font-weight:800; font-size:14px; }
+  .ks tr.ks-in td, .ks tr.ks-out td { border-left:1px solid #e5e8eb; border-right:1px solid #e5e8eb; font-size:12.5px; line-height:1.3; vertical-align:top; height:20px; padding-top:2px; }
+  .ks tr.ks-in td { border-bottom:1px dashed #e5e8eb; }
+  .ks tr.ks-out td { border-bottom:1px solid #b0b8c1; }
+  .ks tr.ks-in td:first-child, .ks tr.ks-out td:first-child { border-left-color:#d1d6db; }
+  .ks tr.ks-in td:last-child, .ks tr.ks-out td:last-child { border-right-color:#d1d6db; }
+  .ks .ks-none { color:#8b95a1; padding:30px 0; }
+  .ks tbody.ks-p { break-inside:avoid; page-break-inside:avoid; }
   /* 옆 칸 */
   #drawer { width:452px; background:#fff; border-left:1px solid var(--line); padding:20px; overflow:auto; flex:none; box-shadow:-8px 0 24px rgba(25,31,40,.05); }
   #drawer h2 { margin:0; font-size:19px; font-weight:700; }
@@ -133,20 +149,23 @@
   #toast button { background:none; border:none; color:#7db5ff; font-weight:700; padding:0; }
   /* 출퇴근카드 (예전 지문 기계 카드와 같은 양식) */
   .kcards { display:flex; flex-wrap:wrap; gap:24px; }
-  .kcard { width:640px; background:#fff; padding:18px 20px 22px; border:1px solid var(--line); border-radius:12px; font-family:'Malgun Gothic', 'Pretendard Variable', sans-serif; color:#000; }
-  .kcard h1 { margin:0 0 6px; text-align:center; font-size:30px; font-weight:700; color:#0000cc; letter-spacing:6px; }
-  .kcard .kd { font-size:13px; margin:0 0 3px; }
-  .kcard .kd span { margin-left:56px; }
-  .kt { width:100%; border-collapse:collapse; table-layout:fixed; border:2px solid #0000cc; border-radius:0; }
-  .kt td { border:1px solid #0000cc; padding:2px 4px; text-align:center; font-size:13px; height:21px; white-space:nowrap; overflow:hidden; }
-  .kt .lb { color:#0000cc; }
-  .kt .big { font-size:19px; font-weight:700; color:#0000cc; }
-  .kt .ttl { font-weight:700; color:#0000cc; font-size:15px; }
-  .kt .sun, .kt .hol { color:#d00; } .kt .sat { color:#b30000; }
-  .kt .ti { color:#008080; font-weight:700; } .kt .to { color:#990000; font-weight:700; }
-  .kt .nd { font-size:10px; font-weight:500; color:#666; }
-  .kt .rm { color:#333; }
-  .kt .rm.bad { color:#d00; }
+  .kcard { width:640px; background:#fff; padding:22px 24px 24px; border:1px solid var(--line); border-radius:12px; font-family:'Pretendard Variable', 'Malgun Gothic', sans-serif; color:#191f28; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .kcard h1 { margin:0 0 10px; text-align:center; font-size:26px; font-weight:800; color:#191f28; letter-spacing:4px; }
+  .kcard .kd { font-size:13px; margin:0 0 6px; color:#4e5968; font-weight:600; }
+  .kcard .kd span { margin-left:16px; font-weight:500; }
+  .kt { width:100%; border-collapse:collapse; table-layout:fixed; border:none; border-top:2px solid #333d4b; border-bottom:2px solid #333d4b; border-radius:0; }
+  .kt td { border:1px solid #e5e8eb; padding:2px 4px; text-align:center; font-size:13px; height:21px; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; }
+  .kt tr td:first-child { border-left:none; } .kt tr td:last-child { border-right:none; }
+  .kt .lb { background:#f2f4f6; color:#4e5968; font-size:12.5px; font-weight:600; border-color:#d1d6db; }
+  .kt .big { font-size:17px; font-weight:800; color:#191f28; }
+  .kt .ttl { font-weight:800; color:#191f28; font-size:14.5px; background:#e8f3ff; letter-spacing:2px; border-color:#d1d6db; }
+  .kt .note { color:#6b7684; font-size:12px; }
+  .kt tr.we td { background:#fafbfc; }
+  .kt .sun, .kt .hol { color:#e5383b; font-weight:600; } .kt .sat { color:#3182f6; font-weight:600; }
+  .kt .ti { color:#191f28; font-weight:700; } .kt .to { color:#191f28; font-weight:700; }
+  .kt .nd { font-size:10px; font-weight:500; color:#8b95a1; }
+  .kt .rm { color:#4e5968; }
+  .kt .rm.bad { color:#e5383b; font-size:12px; }
   @media print {
     .kcards { display:block; } .kcard { border:none; border-radius:0; padding:0; margin:0 auto; page-break-after:always; break-after:page; width:180mm; }
     .kcard:last-child { page-break-after:auto; break-after:auto; }
@@ -757,40 +776,26 @@
     const st = (await allStaff()).filter((e) => e.status !== '퇴사');
     // 찍은 날짜 기준: 지난달 마지막 날 야간 근무의 이달 1일 아침 퇴근도 이달 1일 칸에 (그래서 지난달 기록도 받음)
     const recs = (await monthRecs(ym)).concat(await monthRecs(prevMonth(ym))).filter((d) => ymd(d.at).slice(0, 7) === ym && (place === '전체' || d.place === place));
+    // 직원별 · 찍은 날짜별 출근 시각들, 퇴근 시각들 (예전 근태기록표처럼 출근 줄과 퇴근 줄을 따로)
     const by = {};
     recs.forEach((d) => {
       let t = d.at;
       const h = kParts(t).h;
       if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl) t += (18 - h) * 3600 * 1000;
       const day = ymd(d.at);   // 근무일이 아니라 찍은 날짜 칸에
-      ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || []).push(t);
+      const c = ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || { i: [], o: [] });
+      c[d.type === '출근' ? 'i' : 'o'].push(t);
     });
-    const blank = () => new Array(DAYS).fill('');
-    const rows = [], bg = [], fw = [], al = [], merges = [];
-    const push = (r, b, f, a) => { rows.push(r); bg.push(b || new Array(DAYS).fill('#ffffff')); fw.push(f || new Array(DAYS).fill('normal')); al.push(a || new Array(DAYS).fill('center')); };
-    const r0 = blank(); r0[0] = '근태기록표'; push(r0, null, new Array(DAYS).fill('bold')); merges.push([0, 0, 1, DAYS]);
-    push(blank());
-    const r2 = blank(), b2 = new Array(DAYS).fill('#ffffff'), f2 = new Array(DAYS).fill('normal');
-    r2[0] = '출근 월'; r2[2] = ym; r2[6] = '장소'; r2[8] = place;
-    r2[12] = y + '/' + pad(m) + '/01 ~ ' + pad(m) + '/' + pad(last) + '   ( ' + (place === '전체' ? 'krf센터' : place) + ' )';
-    [2, 3, 4, 8, 9, 10].forEach((c) => { b2[c] = '#fff2cc'; }); [0, 2, 6, 8].forEach((c) => { f2[c] = 'bold'; });
-    push(r2, b2, f2); merges.push([2, 0, 1, 2], [2, 2, 1, 3], [2, 6, 1, 2], [2, 8, 1, 3], [2, 12, 1, DAYS - 12]);
-    const r3 = blank(); r3[0] = '※ 16:00~17:59 퇴근은 18시대 근무 인정 시각으로 표시합니다 (16시대 +2시간, 17시대 +1시간 / 원본은 기록 그대로). 보정하지 않을 기록은 \'기록\' 탭의 \'보정제외\'를 체크하세요.';
-    push(r3, null, null, new Array(DAYS).fill('left')); merges.push([3, 0, 1, DAYS]);
-    st.forEach((e) => {
-      const day = blank(), info = blank(), times = blank(), k = rows.length;
-      for (let d = 1; d <= last; d++) {
-        day[d - 1] = String(d);
-        const list = ((by[String(e.no)] || {})[ym + '-' + pad(d)] || []).sort((a, b) => a - b);
-        times[d - 1] = list.map(hm).join('\n');
+    const people = st.map((e) => {
+      const ins = [], outs = [];
+      for (let d = 1; d <= DAYS; d++) {
+        const c = d <= last ? (by[String(e.no)] || {})[ym + '-' + pad(d)] : null;
+        ins.push(c ? c.i.sort((a, b) => a - b).map(hm).join('\n') : '');
+        outs.push(c ? c.o.sort((a, b) => a - b).map(hm).join('\n') : '');
       }
-      info[0] = '사원번호'; info[2] = String(e.no); info[8] = '성명'; info[10] = e.name; info[18] = '부서'; info[20] = e.dept || '';
-      push(day, new Array(DAYS).fill('#f3f3f3'), new Array(DAYS).fill('bold'));
-      push(info, new Array(DAYS).fill('#dbe5f1'));
-      push(times);
-      merges.push([k + 1, 0, 1, 2], [k + 1, 2, 1, 6], [k + 1, 8, 1, 2], [k + 1, 10, 1, 8], [k + 1, 18, 1, 2], [k + 1, 20, 1, DAYS - 20]);
+      return { no: String(e.no), name: e.name, dept: e.dept || '', ins: ins, outs: outs };
     });
-    return { ok: true, month: ym, place: place, places: placesList, fixed: false, fromDb: true, rows: rows, bg: bg, fw: fw, al: al, merges: merges, widths: new Array(DAYS).fill(44), hidden: [] };
+    return { ok: true, month: ym, place: place, places: placesList, fixed: false, fromDb: true, last: last, people: people };
   };
 
   /* ───────── 바깥에서 쓰는 것 ───────── */
@@ -825,7 +830,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 18:56';
+  const VER = '2026-11-14 19:25';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -1342,7 +1347,7 @@
   // ── 근태기록표: 구글 시트의 '근태기록' 탭이 계산한 표를 그대로 ──
   // 근태기록표는 달 + 장소(시트 I3 칸과 같음)마다 따로 기억
   const SH = {};
-  let shSeq = 0, shPlace = store.get('shPlace') || '전체', shPlaces = ['전체'];
+  let shSeq = 0, shPlace = store.get('shPlace') || '전체', shPlaces = ['전체'], shOnly = store.get('shOnly') !== '0';   // 기본: 기록 있는 직원만
   const shKey = () => ym + '|' + shPlace;
   async function loadSheet() {
     const seq = ++shSeq, k = shKey();
@@ -1356,42 +1361,187 @@
   }
   function renderSheet() {
     const list = shPlaces.indexOf(shPlace) < 0 ? shPlaces.concat([shPlace]) : shPlaces;
-    $('filters').innerHTML = '<label class="sub2">장소</label><select id="shPlace">' + list.map((p) => opt(p, shPlace)).join('') + '</select>';
+    $('filters').innerHTML = '<label class="sub2">장소</label><select id="shPlace">' + list.map((p) => opt(p, shPlace)).join('') + '</select>' +
+      '<label class="sub2" style="margin-left:10px"><input type="checkbox" id="shOnly"' + (shOnly ? ' checked' : '') + '> 기록 있는 직원만</label>';
     const d = SH[shKey()];
     if (d === undefined) { $('view').innerHTML = '<div class="empty">근태기록표를 계산하는 중… (몇 초 걸려요)</div>'; return; }
     if (d === 'err') { $('view').innerHTML = '<div class="empty">불러오지 못했어요. [새로 고침]을 눌러 주세요</div>'; return; }
-    $('view').innerHTML = '<div class="pad"><div class="hint noprint">' + (d.fixed ? '이 달은 확정해서 보관해 둔 표예요.' : d.fromDb ? "구글 시트 '근태기록' 탭과 같은 방식으로 기록에서 바로 계산한 표예요." : "구글 시트 '근태기록' 탭이 계산한 표를 그대로 보여 줘요. 기록을 고친 뒤에는 [새로 고침]을 눌러 주세요.") + '</div>' +
-      sheetTable(d) + '</div>';
+    $('view').innerHTML = '<div class="pad"><div class="hint noprint">예전 근태기록표 양식이에요 (한 사람당 날짜 · 사원 · 출근 · 퇴근 줄). 퇴근은 찍은 날짜 칸에 나오고, 16·17시대 퇴근은 18시대 근무 인정 시각으로 보여요.' +
+      (d.fixed ? ' 이 달은 확정해서 보관해 둔 표예요.' : '') + ' 인쇄는 A4 가로, 엑셀은 같은 양식의 파일로 내려받아요.</div>' +
+      '<div style="overflow-x:auto">' + sheetTable(d) + '</div></div>';
   }
-  // 시트 모양 그대로: 병합 칸은 rowspan/colspan, 열 너비·배경색·굵기·정렬도 시트에서 받은 대로
-  function sheetTable(d) {
-    const R = d.rows.length, C = R ? d.rows[0].length : 0, hid = {}, cover = {}, span = {};
-    (d.hidden || []).forEach((c) => { hid[c] = 1; });
-    (d.merges || []).forEach((m) => {
-      const r0 = m[0], c0 = m[1], rs = Math.min(m[2], R - r0);
-      let cs = 0;
-      for (let c = c0; c < Math.min(c0 + m[3], C); c++) if (!hid[c]) cs++;
-      span[r0 + ',' + c0] = [rs, cs];
-      for (let r = r0; r < r0 + rs; r++) for (let c = c0; c < c0 + m[3]; c++) if (r !== r0 || c !== c0) cover[r + ',' + c] = 1;
-    });
-    const AL = { left: 'left', right: 'right', center: 'center', general: '', 'general-left': 'left', 'general-right': 'right' };
-    let h = '<table class="sheet"><colgroup>';
-    for (let c = 0; c < C; c++) if (!hid[c]) h += '<col style="width:' + Math.max(18, Math.round(((d.widths || [])[c] || 60) * 0.9)) + 'px">';
-    h += '</colgroup><tbody>';
-    for (let r = 0; r < R; r++) {
-      h += '<tr>';
-      for (let c = 0; c < C; c++) {
-        if (hid[c] || cover[r + ',' + c]) continue;
-        const sp = span[r + ',' + c], bg = d.bg ? d.bg[r][c] : '', fw = d.fw ? d.fw[r][c] : '', al = d.al ? AL[String(d.al[r][c]).toLowerCase()] : '';
-        let st = '';
-        if (bg && bg !== '#ffffff') st += 'background:' + bg + ';';
-        if (fw === 'bold') st += 'font-weight:700;';
-        if (al) st += 'text-align:' + al + ';';
-        h += '<td' + (sp && sp[0] > 1 ? ' rowspan="' + sp[0] + '"' : '') + (sp && sp[1] > 1 ? ' colspan="' + sp[1] + '"' : '') + (st ? ' style="' + st + '"' : '') + '>' + esc(d.rows[r][c]) + '</td>';
-      }
-      h += '</tr>';
+  // 예전 근태기록표 양식: 직원 한 사람 = 날짜 줄 · 사원번호/성명/부서 줄 · 출근 줄 · 퇴근 줄 · 빈 줄
+  // (서버에서 받은 예전 모양(시각 한 줄)이면 출근 → 퇴근 → 출근 → 퇴근 순서로 나눠서 같은 양식으로)
+  function sheetModel(d) {
+    const [y, m] = String(d.month || ym).split('-').map(Number), last = d.last || new Date(y, m, 0).getDate();
+    let people = d.people;
+    if (!people) {
+      people = [];
+      const rows = d.rows || [], after = (row, lab) => { const i = row.findIndex((v) => String(v).replace(/\s/g, '') === lab); if (i < 0) return ''; for (let c = i + 1; c < row.length; c++) if (String(row[c]).trim()) return String(row[c]).trim(); return ''; };
+      rows.forEach((row, r) => {
+        if (String(row[0]).replace(/\s/g, '') !== '사원번호' || !after(row, '성명')) return;
+        const tr = rows[r + 1] || [], io = (d.kinds || {})[r + 1] || [], ins = [], outs = [];
+        for (let c = 0; c < 31; c++) {
+          const parts = String(tr[c] || '').split('\n').filter((t) => t.trim()), a = [], b = [];
+          parts.forEach((t, i) => ((io[c] ? io[c][i] === 'i' : i % 2 === 0) ? a : b).push(t.trim()));
+          ins.push(a.join('\n')); outs.push(b.join('\n'));
+        }
+        people.push({ no: after(row, '사원번호'), name: after(row, '성명'), dept: after(row, '부서'), ins: ins, outs: outs });
+      });
     }
-    return h + '</tbody></table>';
+    const place = d.place || shPlace;
+    return {
+      y: y, m: m, last: last, place: place,
+      range: y + '/' + String(m).padStart(2, '0') + '/01 ~ ' + String(m).padStart(2, '0') + '/' + String(last).padStart(2, '0') + ' ( ' + (place === '전체' ? 'krf센터' : place) + ' )',
+      people: people.filter((p) => !shOnly || p.ins.concat(p.outs).some((v) => v))   // 기록 없는 직원은 숨김 (선택)
+    };
+  }
+  function sheetTable(d) {
+    const M = sheetModel(d), D = 31, dow = (c) => c < M.last ? new Date(M.y, M.m - 1, c + 1).getDay() : -1;
+    const cell = (v) => esc(v).replace(/\n/g, '<br>');
+    let h = '<table class="ks"><colgroup>' + '<col>'.repeat(D) + '</colgroup>' +
+      '<tbody class="ks-hd"><tr><td colspan="' + D + '" class="ks-ttl">근태기록표</td></tr>' +
+      '<tr><td colspan="2" class="ks-rl">출근 일자</td><td colspan="' + (D - 2) + '" class="ks-rg">' + esc(M.range) + '</td></tr>' +
+      '<tr class="ks-gap"><td colspan="' + D + '"></td></tr></tbody>';
+    if (!M.people.length) h += '<tbody><tr><td colspan="' + D + '" class="ks-none">이 달에는 기록이 없어요</td></tr></tbody>';
+    M.people.forEach((p) => {
+      h += '<tbody class="ks-p"><tr class="ks-day">';
+      for (let c = 0; c < D; c++) { const w = dow(c); h += '<td' + (w === 0 ? ' class="sun"' : w === 6 ? ' class="sat"' : '') + '>' + (c < M.last ? c + 1 : '') + '</td>'; }
+      h += '</tr><tr class="ks-info"><td colspan="2" class="lb">사원번호</td><td colspan="6">' + esc(p.no) + '</td><td colspan="2" class="lb">성명</td><td colspan="8" class="nm">' + esc(p.name) +
+        '</td><td colspan="2" class="lb">부서</td><td colspan="' + (D - 20) + '">' + esc(p.dept) + '</td></tr><tr class="ks-in">';
+      for (let c = 0; c < D; c++) h += '<td>' + cell(p.ins[c] || '') + '</td>';
+      h += '</tr><tr class="ks-out">';
+      for (let c = 0; c < D; c++) h += '<td>' + cell(p.outs[c] || '') + '</td>';
+      h += '</tr><tr class="ks-gap"><td colspan="' + D + '"></td></tr></tbody>';
+    });
+    return h + '</table>';
+  }
+
+  // ── 근태기록표 엑셀 파일(.xlsx): 화면과 같은 양식 · 선·색·글꼴 그대로 · A4 가로 한 장 너비에 맞춰 인쇄 ──
+  function sheetXlsx(d) {
+    const M = sheetModel(d), D = 31, X = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const colL = (c) => (c >= 26 ? 'A' + String.fromCharCode(65 + c - 26) : String.fromCharCode(65 + c));   // 0 → A, 30 → AE
+    const rows = [], merges = [], breaks = [];
+    let pageH = 0;
+    const PAGE = 560;   // 한 쪽에 들어가는 대략의 높이(포인트, 축소 인쇄 기준) — 한 사람이 두 쪽으로 갈라지지 않게
+    const row = (cells, ht) => { rows.push({ cells: cells, ht: ht }); return rows.length; };
+    const str = (c, v, s) => ({ c: c, v: v, s: s, t: 's' });
+    const num = (c, v, s) => ({ c: c, v: v, s: s, t: 'n' });
+    const fill = (from, to, s, arr) => { for (let c = from; c < to; c++) if (!arr.some((x) => x.c === c)) arr.push({ c: c, s: s, t: 'e' }); return arr; };
+    let r = row([str(0, '근태기록표', 1)], 30); merges.push('A' + r + ':AE' + r);
+    r = row(fill(0, D, 2, [str(0, '출근 일자', 10), str(2, M.range, 2)]), 18); merges.push('A' + r + ':B' + r, 'C' + r + ':AE' + r);
+    row([], 8);
+    pageH = 56;
+    M.people.forEach((p) => {
+      const lines = (arr) => Math.max(1, ...arr.map((v) => (v ? String(v).split('\n').length : 1)));
+      const hIn = 13 * lines(p.ins) + 3, hOut = 13 * lines(p.outs) + 3, blockH = 17 + 17 + hIn + hOut + 9;
+      if (pageH + blockH > PAGE) { breaks.push(rows.length); pageH = 0; }
+      pageH += blockH;
+      const day = [];
+      for (let c = 0; c < D; c++) { const w = c < M.last ? new Date(M.y, M.m - 1, c + 1).getDay() : -1; day.push(c < M.last ? num(c, c + 1, w === 0 ? 4 : w === 6 ? 5 : 3) : { c: c, s: 3, t: 'e' }); }
+      row(day, 17);
+      r = row(fill(0, D, 11, [str(0, '사원번호', 6), (/^\d+$/.test(p.no) ? num(2, Number(p.no), 11) : str(2, p.no, 11)), str(8, '성명', 6), str(10, p.name, 7), str(18, '부서', 6), str(20, p.dept, 11)]), 19);
+      merges.push('A' + r + ':B' + r, 'C' + r + ':H' + r, 'I' + r + ':J' + r, 'K' + r + ':R' + r, 'S' + r + ':T' + r, 'U' + r + ':AE' + r);
+      row(p.ins.map((v, c) => (v ? str(c, v, 8) : { c: c, s: 8, t: 'e' })), hIn);
+      row(p.outs.map((v, c) => (v ? str(c, v, 9) : { c: c, s: 9, t: 'e' })), hOut);
+      row([], 9);
+    });
+    const sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="' + D + '" width="5.6" customWidth="1"/></cols><sheetData>' +
+      rows.map((rw, i) => '<row r="' + (i + 1) + '" ht="' + rw.ht + '" customHeight="1">' + rw.cells.sort((a, b) => a.c - b.c).map((x) => {
+        const ref = colL(x.c) + (i + 1);
+        if (x.t === 'n') return '<c r="' + ref + '" s="' + x.s + '"><v>' + x.v + '</v></c>';
+        if (x.t === 's') return '<c r="' + ref + '" s="' + x.s + '" t="inlineStr"><is><t xml:space="preserve">' + X(x.v) + '</t></is></c>';
+        return '<c r="' + ref + '" s="' + x.s + '"/>';
+      }).join('') + '</row>').join('') + '</sheetData>' +
+      (merges.length ? '<mergeCells count="' + merges.length + '">' + merges.map((m) => '<mergeCell ref="' + m + '"/>').join('') + '</mergeCells>' : '') +
+      '<printOptions horizontalCentered="1"/><pageMargins left="0.3" right="0.3" top="0.4" bottom="0.4" header="0.2" footer="0.2"/>' +
+      '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>' +
+      (breaks.length ? '<rowBreaks count="' + breaks.length + '" manualBreakCount="' + breaks.length + '">' + breaks.map((b) => '<brk id="' + b + '" max="16383" man="1"/>').join('') + '</rowBreaks>' : '') +
+      '</worksheet>';
+    const F = (sz, color, b, name) => '<font>' + (b ? '<b/>' : '') + '<sz val="' + sz + '"/><color rgb="FF' + color + '"/><name val="' + (name || '맑은 고딕') + '"/></font>';
+    const side = (k, v) => v ? '<' + k + ' style="' + v[0] + '"><color rgb="FF' + v[1] + '"/></' + k + '>' : '<' + k + '/>';   // v = [선 모양, 색]
+    const B = (l, rr, t, b) => '<border>' + side('left', l) + side('right', rr) + side('top', t) + side('bottom', b) + '<diagonal/></border>';
+    const LN = ['thin', 'D1D6DB'], SOFT = ['thin', 'E5E8EB'];
+    const xf = (font, fillId, border, h, v, wrap) => '<xf numFmtId="0" fontId="' + font + '" fillId="' + fillId + '" borderId="' + border + '" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="' + h + '" vertical="' + v + '"' + (wrap ? ' wrapText="1"' : '') + '/></xf>';
+    const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="11">' + F(10, '191F28') + F(18, '191F28', 1) + F(11, '4E5968') + F(10, '4E5968', 1) + F(10, 'E5383B', 1) + F(10, '3182F6', 1) +
+      F(9, '6B7684') + F(11, '191F28', 1) + F(10, '191F28') + F(10, '191F28') + F(11, '191F28', 1) + '</fonts>' +
+      '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8F3FF"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F4F6"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<borders count="5">' + B() + B(LN, LN, LN, LN) + B(0, 0, 0, ['medium', '333D4B']) + B(SOFT, SOFT, 0, ['dashed', 'E5E8EB']) + B(SOFT, SOFT, 0, ['thin', 'B0B8C1']) + '</borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="12">' +
+      xf(0, 0, 0, 'general', 'center') + xf(1, 0, 0, 'center', 'center') + xf(2, 0, 2, 'left', 'center') +
+      xf(3, 3, 1, 'center', 'center') + xf(4, 3, 1, 'center', 'center') + xf(5, 3, 1, 'center', 'center') +
+      xf(6, 2, 1, 'left', 'center') + xf(7, 2, 1, 'left', 'center') + xf(8, 0, 3, 'center', 'top', 1) + xf(8, 0, 4, 'center', 'top', 1) +
+      xf(10, 0, 2, 'left', 'center') + xf(9, 2, 1, 'left', 'center') + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+    const files = {
+      '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+      '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      'xl/workbook.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + M.y + '년 ' + M.m + '월" sheetId="1" r:id="rId1"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+      'xl/styles.xml': styles,
+      'xl/worksheets/sheet1.xml': sheetXml
+    };
+    return zipStore(files);
+  }
+  // ── 인쇄 전용 틀: 화면 대신 인쇄할 것만 따로 담아서 용지 방향을 고정 ──
+  // 출퇴근카드 = A4 세로 한 사람 한 장 (긴 카드는 한 장에 맞게 자동 축소), 근태기록표 = A4 가로 · 너비 맞춤 · 한 사람이 두 장으로 갈라지지 않게
+  async function printFrame(html, kind) {
+    const old = $('printFr'); if (old) old.remove();
+    const land = kind === 'sheet', W = land ? 283 : 194, H = land ? 196 : 281;   // 용지에서 여백을 뺀 크기(mm)
+    const f = document.createElement('iframe');
+    f.id = 'printFr';
+    f.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + W + 'mm;height:' + H + 'mm;border:0';
+    document.body.appendChild(f);
+    const css = Array.from(document.querySelectorAll('style, link[rel=stylesheet]')).map((e) => e.outerHTML).join('');
+    const extra = '@page{size:A4 ' + (land ? 'landscape;margin:7mm' : 'portrait;margin:8mm') + '}' +
+      'html,body{display:block!important;height:auto!important;overflow:visible!important;background:#fff!important;margin:0!important;padding:0!important;min-width:0!important}' +
+      '.kcard{width:' + W + 'mm!important;max-width:none;margin:0!important;padding:0!important;border:none!important;border-radius:0!important;break-after:page;page-break-after:always;transform-origin:top left}' +
+      '.kcard:last-child{break-after:auto;page-break-after:auto}' +
+      '.ks{min-width:0!important;max-width:none!important;width:100%!important}' +
+      '.ks .ks-ttl{font-size:22px;padding:0 0 6px}.ks .ks-rl,.ks .ks-rg{font-size:12px}' +
+      '.ks tr.ks-day td,.ks tr.ks-info td{font-size:11px;height:17px}.ks tr.ks-info td.nm{font-size:12px}' +
+      '.ks tr.ks-in td,.ks tr.ks-out td{font-size:10.5px;height:16px;padding:1px 0}.ks tr.ks-gap td{height:8px}' +
+      '.ks td{padding:0 1px}';
+    const doc = f.contentDocument;
+    doc.open();
+    doc.write('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>KRF출퇴근</title>' + css + '<style>' + extra + '</style></head><body>' + html + '</body></html>');
+    doc.close();
+    try { await doc.fonts.ready; } catch (e) {}
+    await new Promise((r) => setTimeout(r, 120));
+    if (!land) {                                     // 카드가 한 장보다 길면 그 카드만 줄여서 한 장에
+      const limit = H * 96 / 25.4 - 6;
+      doc.querySelectorAll('.kcard').forEach((k) => { const h = k.getBoundingClientRect().height; if (h > limit) k.style.zoom = String(Math.floor(limit / h * 1000) / 1000); });
+    }
+    f.contentWindow.focus();
+    f.contentWindow.print();
+  }
+
+  // 압축 없이 묶는 간단한 zip (xlsx 파일 껍데기)
+  function zipStore(files) {
+    const enc = new TextEncoder(), crcT = [];
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crcT[n] = c >>> 0; }
+    const crc = (u) => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = crcT[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+    const parts = [], cen = [];
+    let off = 0;
+    Object.keys(files).forEach((name) => {
+      const nm = enc.encode(name), data = enc.encode(files[name]), c = crc(data);
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+      h.setUint32(14, c, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+      parts.push(new Uint8Array(h.buffer), nm, data);
+      const ce = new DataView(new ArrayBuffer(46));
+      ce.setUint32(0, 0x02014b50, true); ce.setUint16(4, 20, true); ce.setUint16(6, 20, true); ce.setUint16(8, 0x0800, true);
+      ce.setUint32(16, c, true); ce.setUint32(20, data.length, true); ce.setUint32(24, data.length, true); ce.setUint16(28, nm.length, true); ce.setUint32(42, off, true);
+      cen.push(new Uint8Array(ce.buffer), nm);
+      off += 30 + nm.length + data.length;
+    });
+    const cenLen = cen.reduce((s, u) => s + u.length, 0), end = new DataView(new ArrayBuffer(22)), n = Object.keys(files).length;
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, n, true); end.setUint16(10, n, true); end.setUint32(12, cenLen, true); end.setUint32(16, off, true);
+    return new Blob(parts.concat(cen, [new Uint8Array(end.buffer)]), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
 
   // ── 출퇴근카드: 예전 지문 기계의 직원별 카드와 같은 양식 (한 사람 한 장, 인쇄용) ──
@@ -1427,7 +1577,7 @@
         .concat(prevWd ? (by[prevWd] || []).filter((r) => r.type === '퇴근' && r.day === wd) : []).sort((a, b) => a.at - b.at);
       const oShow = outsHere.length ? outsHere[outsHere.length - 1] : null;
       const rm = !c ? '' : !c.i ? '출근 기록 없음' : !c.o ? (wd === todayStr() ? '' : '퇴근 기록 없음') : '';
-      rows += '<tr><td class="' + (w === 0 ? 'sun' : w === 6 ? 'sat' : '') + '">' + String(d).padStart(2, '0') + ' ' + WEEK[w] + '</td>' +
+      rows += '<tr' + (w === 0 || w === 6 ? ' class="we"' : '') + '><td class="' + (w === 0 ? 'sun' : w === 6 ? 'sat' : '') + '">' + String(d).padStart(2, '0') + ' ' + WEEK[w] + '</td>' +
         '<td colspan="2">' + (c ? tm(c.i, 'ti') : '') + '</td><td colspan="2">' + tm(oShow, 'to') + '</td>' +
         (rm ? '<td colspan="4" class="rm bad">' + rm + '</td>' : '<td></td><td></td><td></td><td></td>') + '</tr>';
     }
@@ -1439,7 +1589,7 @@
       '<tr><td class="lb" rowspan="2">결근(일)</td><td class="lb" rowspan="2">출근(일)</td><td class="lb" colspan="3">연장(시)</td><td class="lb" colspan="2">지각</td><td class="lb" colspan="2">조퇴</td></tr>' +
       '<tr><td class="lb" colspan="2">연장</td><td class="lb">야근</td><td class="lb">(회)</td><td class="lb">(분)</td><td class="lb">(회)</td><td class="lb">(분)</td></tr>' +
       '<tr><td></td><td>' + (work || '') + '</td><td colspan="2"></td><td></td><td>' + (lateN || '') + '</td><td>' + (lateM || '') + '</td><td>' + (earlyN || '') + '</td><td>' + (earlyM || '') + '</td></tr>' +
-      '<tr><td colspan="9">1. 09:00-18:00, 17:00-09:00</td></tr>' +
+      '<tr><td colspan="9" class="note">근무 기준 · 주간 09:00-18:00 · 야간 17:00-09:00</td></tr>' +
       '<tr><td colspan="9" class="ttl">출퇴근기록표</td></tr>' +
       '<tr><td class="lb" rowspan="2">일자/주</td><td class="lb" colspan="4">출퇴근</td><td class="lb" colspan="2">연장</td><td class="lb" colspan="2">야근</td></tr>' +
       '<tr><td class="lb" colspan="2">출근</td><td class="lb" colspan="2">퇴근</td><td class="lb">시작</td><td class="lb">종료</td><td class="lb">시작</td><td class="lb">종료</td></tr>' +
@@ -1477,6 +1627,15 @@
 
   // ── 엑셀(CSV)로 내려받기: 지금 보고 있는 표 그대로 ──
   function csv() {
+    if (view === 'sheet') {                          // 근태기록표는 양식 그대로 엑셀 파일(.xlsx)로
+      const d = SH[shKey()];
+      if (!d || d === 'err') { alert('근태기록표를 다 불러온 뒤에 눌러 주세요'); return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(sheetXlsx(d));
+      a.download = 'KRF근태기록표_' + ym + (shPlace !== '전체' ? '_' + shPlace : '') + '.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      return;
+    }
     const rows = [];
     if (view === 'grid') {
       if (!D) return;
@@ -1532,12 +1691,15 @@
         return;
       }
       if (act === 'csv') return csv();
-      if (act === 'print') { window.print(); return; }
+      if (act === 'print') {
+        if (view === 'sheet') { const d = SH[shKey()]; if (d && d !== 'err') printFrame(sheetTable(d), 'sheet'); return; }
+        if (view === 'card') { const k = document.querySelector('#view .kcards'); if (k) printFrame(k.innerHTML, 'card'); return; }
+        window.print(); return;
+      }
       if (act === 'cardAll') {             // 모든 직원 카드를 한 장씩 이어서 인쇄
         if (!D) return;
         const staff = cardStaff().filter((x) => x.status !== '퇴사' || Object.keys(byNoWd()[x.no] || {}).length);
-        $('view').innerHTML = '<div class="pad"><div class="kcards">' + staff.map(cardHtml).join('') + '</div></div>';
-        setTimeout(() => { window.print(); renderCard(); }, 50);
+        printFrame(staff.map(cardHtml).join(''), 'card');
         return;
       }
       if (act === 'closeDrawer') { closeDrawer(); return; }
@@ -1649,6 +1811,7 @@
     const t = ev.target;
     if (t.id === 'staffAll') { staffAll = t.checked; renderStaff(); return; }
     if (t.id === 'shPlace') { shPlace = t.value; store.set('shPlace', shPlace); renderSheet(); loadSheet(); return; }
+    if (t.id === 'shOnly') { shOnly = t.checked; store.set('shOnly', shOnly ? '1' : '0'); renderSheet(); return; }
     if (t.id === 'cardSel') { cardNo = t.value; store.set('cardNo', cardNo); renderCard(); return; }
     if (t.matches('[data-selall]')) { sel.clear(); if (t.checked) listRows().forEach((r) => sel.add(r.id)); renderList(); return; }
     if (t.matches('[data-sel]')) { const id = t.closest('[data-id]').dataset.id; if (t.checked) sel.add(id); else sel.delete(id); bulkBar(); return; }
