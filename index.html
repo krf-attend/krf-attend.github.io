@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 15:18</div>
+    <div id="ver">화면 버전 2026-11-14 15:36</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -2165,7 +2165,34 @@
     loadAdmin();
   });
   $('adminBtn').addEventListener('click', () => { $('admin').classList.remove('hidden'); loadAdmin(); });
-  $('adminClose').addEventListener('click', () => { $('admin').classList.add('hidden'); loadStatus(); });
+  // 아래 큰 버튼: 기록 고치기·빠진 기록 화면에서는 '한 단계 뒤로'(위쪽 ← 버튼과 같음), 직원 목록에서만 닫기
+  function admBack() {
+    if (admView === 'list') return false;
+    const b = $('adminBody').querySelector(admView === 'mis' ? '[data-mis="back"]' : '[data-ed="back"]');
+    if (!b) return false;
+    b.click();
+    return true;
+  }
+  $('adminClose').addEventListener('click', () => { if (admBack()) return; $('admin').classList.add('hidden'); loadStatus(); });
+  // 버튼 글자를 지금 화면에 맞춤 + 휴대폰 '뒤로' 버튼을 누르면 앱이 꺼지지 않고 한 단계씩 돌아가게
+  const isOpen = (id) => !$(id).classList.contains('hidden');
+  function syncNav() {
+    const setTxt = (id, t) => { if ($(id).textContent !== t) $(id).textContent = t; };   // 같으면 건드리지 않음 (무한 반복 방지)
+    setTxt('adminClose', admView === 'rec' ? (edBackMis ? '← 빠진 기록으로' : edBackCal ? '← 달력으로' : '← 직원 목록으로')
+      : admView === 'mis' ? '← 직원 목록으로' : '닫기');
+    setTxt('histClose', histNo !== null && isOpen('admin') ? '← 관리자 화면으로' : '닫기');
+    if ((isOpen('admin') || isOpen('hist')) && !(history.state && history.state.krfLayer)) {
+      try { history.pushState({ krfLayer: 1 }, ''); } catch (e) {}
+    }
+  }
+  new MutationObserver(() => syncNav()).observe($('admin'), { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+  new MutationObserver(() => syncNav()).observe($('hist'), { attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('popstate', () => {
+    if (isOpen('hist')) $('histClose').click();
+    else if (isOpen('admin')) $('adminClose').click();
+    else return;
+    setTimeout(syncNav, 0);   // 아직 열린 화면이 있으면 다음 '뒤로'도 앱 안에서 처리
+  });
   // 슈퍼관리자 로그아웃: 서버에서 이 폰을 빼고, 폰에 저장된 이름·관리자 내용도 지움
   $('logoutBtn').addEventListener('click', async () => {
     if (!confirm('이 휴대폰에서 슈퍼관리자 로그아웃할까요?\n(다시 쓰려면 관리자 코드로 등록해야 해요)')) return;
