@@ -82,6 +82,7 @@
   .hrow .out { color:#b35a00; font-weight:800; }
   .hrow .dur { color:#555; font-size:18px; }
   .hrow .pl { color:#1f5fbf; font-size:18px; font-weight:700; }
+  .erec.focus { background:#fff8e1; box-shadow:0 0 0 2px #f0b400; border-radius:10px; }
   .hempty { font-size:22px; color:#888; text-align:center; margin-top:40px; }
   .cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; margin-bottom:10px; }
   .cw { text-align:center; font-size:16px; font-weight:800; color:#555; padding:2px 0; }
@@ -231,7 +232,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 12:10</div>
+    <div id="ver">화면 버전 2026-11-14 12:40</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -899,7 +900,9 @@
       else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + tmP(p.in) + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
       else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + tmP(p.out) + '</div>';
     });
+    if (histNo !== null) html += '<button class="abtn" id="histFix" style="margin-top:12px;width:100%">✏️ 이 날 기록 고치기</button>';
     $('histDetail').innerHTML = html;
+    if ($('histFix')) $('histFix').addEventListener('click', () => histFixGo(date));
   }
   // 한 번 본 달은 기억해 두었다가 바로 보여 주고, 옆 달은 미리 받아 둠
   const histCache = {};
@@ -974,14 +977,22 @@
     $('histList').innerHTML = html;
     document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d)));
     $('histSum').textContent = (histNo !== null ? histWho + '님 · ' : '') + '출근 ' + d.days.length + '일 · 총 ' + hm(total);
-    const pick = histDays[todayStr()] ? todayStr() : (d.days.length ? d.days[0].date : (histYM === ymStr(new Date()) ? todayStr() : histYM + '-01'));
+    const pick = (histPick && histPick.slice(0, 7) === histYM) ? histPick : histDays[todayStr()] ? todayStr() : (d.days.length ? d.days[0].date : (histYM === ymStr(new Date()) ? todayStr() : histYM + '-01'));
     showDay(pick);
   }
   // 관리자가 다른 직원 달력을 볼 때는 histNo에 사번 (null이면 내 기록)
   let histNo = null, histWho = '';
-  function openHist(no, who) {
+  // 관리자가 달력에서 본 날짜의 기록을 바로 고치러 감 (고친 뒤 '← 달력'으로 돌아옴)
+  function histFixGo(date) {
+    edBackCal = { no: histNo, who: histWho, ym: histYM, day: date };
+    edFocus = date; edFocusScroll = 2; edYM = date.slice(0, 7);
+    $('hist').classList.add('hidden');
+    openRecords(histNo, histWho);
+  }
+  let histPick = '';
+  function openHist(no, who, ym, day) {
     histNo = no; histWho = who || ''; for (const k in histCache) histCache[k].t = 0;
-    histYM = ymStr(new Date());
+    histYM = ym || ymStr(new Date()); histPick = day || '';
     $('hist').classList.remove('hidden');
     loadHist();
   }
@@ -1146,7 +1157,7 @@
     const body = $('adminBody'), seq = ++admSeq, key = 'recCache:' + no + ':' + edYM;
     admView = 'rec';
     const [y, m] = edYM.split('-').map(Number);
-    body.innerHTML = '<div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">← 목록</button>' +
+    body.innerHTML = '<div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">' + (edBackCal ? '← 달력' : '← 목록') + '</button>' +
       '<span class="aname">' + esc(nm) + '</span><span></span></div>' +
       '<div class="arow" style="justify-content:center"><button class="abtn" data-ed="prev">◀</button><span class="aname" style="margin:0 10px">' + y + '년 ' + m + '월</span>' +
       '<button class="abtn" data-ed="next"' + (edYM >= ymStr(new Date()) ? ' disabled' : '') + '>▶</button></div>' +
@@ -1173,6 +1184,18 @@
     fillRecords(d);
     edNote();
   }
+  // 달력에서 '이 날 기록 고치기'로 넘어왔을 때: 그 날 기록에 표시를 하고 그 자리로 내려감
+  let edFocus = '', edFocusScroll = 0, edBackCal = null;
+  function edFocusShow() {
+    const list = $('edList');
+    if (!edFocus || !list) return;
+    const els = [...list.querySelectorAll('.erec')].filter((e) => e.dataset.wd === edFocus || e.dataset.day === edFocus);
+    els.forEach((e) => e.classList.add('focus'));
+    if (!els.length || edFocusScroll <= 0) return;
+    edFocusScroll--;
+    const bx = $('adminBody');
+    bx.scrollTop += els[0].getBoundingClientRect().top - bx.getBoundingClientRect().top - 70;
+  }
   function fillRecords(d) {
     const list = $('edList');
     if (!list) return;
@@ -1190,7 +1213,7 @@
     list.innerHTML = d.records.map((r) => {
       const dt = new Date(r.wd + 'T00:00:00');
       const nd = r.day !== r.wd;
-      return '<div class="erec" data-row="' + r.row + '" data-at="' + r.at + '"><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' +
+      return '<div class="erec" data-row="' + r.row + '" data-at="' + r.at + '" data-wd="' + r.wd + '" data-day="' + r.day + '"><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' +
         '<span class="' + (r.type === '출근' ? 'in' : 'out') + '" style="font-weight:800;color:' + (r.type === '출근' ? 'var(--ok)' : '#b35a00') + '">' + esc(r.type) + '</span> ' +
         (nd ? '다음날 ' : '') + esc(r.time) + ' <span class="asub">' + esc(r.place) + '</span>' +
         (r.pending ? ' <span class="atag wait">⏳ 저장 중</span>' : '') +
@@ -1199,6 +1222,7 @@
         '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '" data-type="' + esc(r.type) + '">고치기</button>' +
         '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
     }).join('');
+    edFocusShow();
   }
   // ── 기록 수정: 고치면 화면에 바로 반영하고, 서버 저장은 뒤에서 순서대로. 저장을 확인 못 한 것은 휴대폰에 남겨 다시 보냄 ──
   let edData = null, edBusy = false, edTimer = null;
@@ -1322,7 +1346,18 @@
     const eb = ev.target.closest('button[data-ed]');
     if (eb) {
       const k = eb.dataset.ed, rec = eb.closest('.erec');
-      if (k === 'back') { edYM = ''; loadAdmin(); return; }
+      if (k === 'back') {
+        const bc = edBackCal; edBackCal = null; edFocus = ''; edYM = ''; loadAdmin();
+        if (bc) {   // 달력에서 왔으면 보던 달·날짜의 달력으로 돌아감 (저장 중인 수정이 있으면 끝난 뒤 한 번 더 새로 받음)
+          const pend = edQ().length;
+          openHist(bc.no, bc.who, bc.ym, bc.day);
+          if (pend) {
+            await edWait(8000);
+            if (histNo === bc.no && !$('hist').classList.contains('hidden')) { for (const hk in histCache) { histCache[hk].t = 0; histCache[hk].p = null; } loadHist(); }
+          }
+        }
+        return;
+      }
       if (k === 'prev' || k === 'next') {
         const [y, m] = edYM.split('-').map(Number);
         edYM = ymStr(new Date(y, m - 1 + (k === 'prev' ? -1 : 1), 1)); openRecords(edNo, edName); return;
@@ -1383,7 +1418,7 @@
     const b = ev.target.closest('button[data-op]');
     if (!b) return;
     const op = b.dataset.op, no = b.dataset.no, nm = b.dataset.name || '', v = b.dataset.v || '';
-    if (op === 'records') { edYM = ''; openRecords(no, nm); return; }
+    if (op === 'records') { edYM = ''; edBackCal = null; edFocus = ''; openRecords(no, nm); return; }
     if (op === 'cal') { openHist(no, nm); return; }
     if (op === 'status' && b.classList.contains('sel')) return;
     const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
