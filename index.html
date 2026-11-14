@@ -82,6 +82,7 @@
   .hrow .out { color:#b35a00; font-weight:800; }
   .hrow .dur { color:#555; font-size:18px; }
   .hrow .pl { color:#1f5fbf; font-size:18px; font-weight:700; }
+  .edHead { position:sticky; top:0; z-index:3; background:var(--bg); padding:2px 0 6px; margin-bottom:4px; box-shadow:0 6px 6px -6px rgba(0,0,0,.18); }
   .erec.focus { background:#fff8e1; box-shadow:0 0 0 2px #f0b400; border-radius:10px; }
   .hempty { font-size:22px; color:#888; text-align:center; margin-top:40px; }
   .cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; margin-bottom:10px; }
@@ -232,7 +233,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 12:40</div>
+    <div id="ver">화면 버전 2026-11-14 13:00</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1157,11 +1158,11 @@
     const body = $('adminBody'), seq = ++admSeq, key = 'recCache:' + no + ':' + edYM;
     admView = 'rec';
     const [y, m] = edYM.split('-').map(Number);
-    body.innerHTML = '<div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">' + (edBackCal ? '← 달력' : '← 목록') + '</button>' +
+    body.innerHTML = '<div class="edHead"><div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">' + (edBackCal ? '← 달력' : '← 목록') + '</button>' +
       '<span class="aname">' + esc(nm) + '</span><span></span></div>' +
       '<div class="arow" style="justify-content:center"><button class="abtn" data-ed="prev">◀</button><span class="aname" style="margin:0 10px">' + y + '년 ' + m + '월</span>' +
       '<button class="abtn" data-ed="next"' + (edYM >= ymStr(new Date()) ? ' disabled' : '') + '>▶</button></div>' +
-      '<div id="edSync"></div>' +
+      '</div><div id="edSync"></div>' +
       '<div class="acard"><button class="abtn go" data-ed="addform">+ 빠진 기록 넣기</button><div id="edAdd"></div></div>' +
       '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>' +
       '<div id="edDel"></div>';
@@ -1194,7 +1195,7 @@
     if (!els.length || edFocusScroll <= 0) return;
     edFocusScroll--;
     const bx = $('adminBody');
-    bx.scrollTop += els[0].getBoundingClientRect().top - bx.getBoundingClientRect().top - 70;
+    bx.scrollTop += els[0].getBoundingClientRect().top - bx.getBoundingClientRect().top - 140;
   }
   function fillRecords(d) {
     const list = $('edList');
