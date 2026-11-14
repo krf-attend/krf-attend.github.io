@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 15:36</div>
+    <div id="ver">화면 버전 2026-11-14 17:37</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -396,7 +396,7 @@
     return best;
   }
   async function allStaff() {
-    const a = docs(await db.collection('staff').get());
+    const a = docs(await db.collection('staff').get()).filter((e) => !e.del);   // 지운 직원(시트 반영 대기)은 빼고
     a.forEach((e) => { e.order = Number(e.order) || 999; });
     a.sort((x, y) => x.order - y.order);
     return a;
@@ -596,15 +596,40 @@
       if (st.some((e) => e.name === name && e.status !== '퇴사')) return { ok: false, error: '같은 이름의 직원이 이미 있어요' };
       let maxNo = 0, maxOrd = 0;
       st.forEach((e) => { maxNo = Math.max(maxNo, Number(e.no) || 0); if (e.order < 999) maxOrd = Math.max(maxOrd, e.order); });
-      const no = String(maxNo + 1);
+      let no = String(maxNo + 1);   // 사번을 넣지 않으면 자동 (가장 큰 번호 + 1)
+      if (d.newNo !== undefined && d.newNo !== null && String(d.newNo).trim() !== '') {
+        const n = Number(String(d.newNo).trim());
+        if (!(Number.isInteger(n) && n >= 1 && n <= 99999)) return { ok: false, error: '사번은 1~99999 사이 숫자로 넣어 주세요' };
+        if (st.some((e) => String(e.no) === String(n))) return { ok: false, error: n + '번은 이미 다른 직원이 쓰고 있어요' };
+        if (await liveRecCount(n)) return { ok: false, error: n + '번으로 남아 있는 출퇴근 기록이 있어서 쓸 수 없어요' };
+        no = String(n);
+      }
       await db.doc('staff/' + no).set({ no: no, name: name, order: maxOrd + 1, dept: dept, status: '재직', dev: '', ok: false, admin: false, mate: false, req: null, upd: Date.now(), sheet: false });
       mirror('staff', [no]);
-      return { ok: true, no: maxNo + 1 };
+      return { ok: true, no: Number(no) };
     }
     const no = String(d.no), e = st.filter((x) => String(x.no) === no)[0];
     if (!e) return { ok: false, error: '직원을 찾지 못했어요' };
     if (name !== e.name && st.some((x) => String(x.no) !== no && x.name === name && x.status !== '퇴사')) return { ok: false, error: '같은 이름의 직원이 이미 있어요' };
     await db.doc('staff/' + no).update({ name: name, dept: dept, upd: Date.now(), sheet: false });
+    mirror('staff', [no]);
+    return { ok: true };
+  };
+
+  /** 이 사번으로 남아 있는(지우지 않은) 출퇴근 기록 수 */
+  async function liveRecCount(no) {
+    return docs(await db.collection('records').where('no', '==', String(no)).get()).filter((r) => !r.del).length;
+  }
+  /** 직원 지우기: 출퇴근 기록이 하나도 없을 때만 (기록이 있으면 '퇴사'로). 시트 줄은 서버가 지움 */
+  H.adminStaffDelete = async function (d) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const no = String(d.no || ''), name = String(d.name || '').trim(), e = await getDoc('staff/' + no);
+    if (!e || e.del || e.name !== name) return { ok: false, error: '직원 목록이 바뀌었어요. 새로 고침해 주세요' };
+    if (dv && String(dv.no) === no) return { ok: false, error: '내 이름은 지울 수 없어요' };
+    if (e.admin) return { ok: false, error: name + '님은 관리자예요. 관리자 권한을 먼저 끈 뒤 지워 주세요' };
+    const n = await liveRecCount(no);
+    if (n) return { ok: false, error: name + '님의 출퇴근 기록이 ' + n + '건 있어서 지울 수 없어요.\n기록이 있는 직원은 상태를 \'퇴사\'로 바꿔 주세요.' };
+    await db.doc('staff/' + no).update({ del: true, sheet: false, upd: Date.now() });
     mirror('staff', [no]);
     return { ok: true };
   };
