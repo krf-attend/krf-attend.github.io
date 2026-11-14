@@ -131,7 +131,25 @@
   #drawer .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
   #toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:11px 18px; border-radius:12px; font-size:14px; font-weight:500; z-index:9; display:flex; gap:14px; align-items:center; box-shadow:0 8px 24px rgba(0,0,0,.18); }
   #toast button { background:none; border:none; color:#7db5ff; font-weight:700; padding:0; }
+  /* 출퇴근카드 (예전 지문 기계 카드와 같은 양식) */
+  .kcards { display:flex; flex-wrap:wrap; gap:24px; }
+  .kcard { width:640px; background:#fff; padding:18px 20px 22px; border:1px solid var(--line); border-radius:12px; font-family:'Malgun Gothic', 'Pretendard Variable', sans-serif; color:#000; }
+  .kcard h1 { margin:0 0 6px; text-align:center; font-size:30px; font-weight:700; color:#0000cc; letter-spacing:6px; }
+  .kcard .kd { font-size:13px; margin:0 0 3px; }
+  .kcard .kd span { margin-left:56px; }
+  .kt { width:100%; border-collapse:collapse; table-layout:fixed; border:2px solid #0000cc; border-radius:0; }
+  .kt td { border:1px solid #0000cc; padding:2px 4px; text-align:center; font-size:13px; height:21px; white-space:nowrap; overflow:hidden; }
+  .kt .lb { color:#0000cc; }
+  .kt .big { font-size:19px; font-weight:700; color:#0000cc; }
+  .kt .ttl { font-weight:700; color:#0000cc; font-size:15px; }
+  .kt .sun, .kt .hol { color:#d00; } .kt .sat { color:#b30000; }
+  .kt .ti { color:#008080; font-weight:700; } .kt .to { color:#990000; font-weight:700; }
+  .kt .nd { font-size:10px; font-weight:500; color:#666; }
+  .kt .rm { color:#333; }
+  .kt .rm.bad { color:#d00; }
   @media print {
+    .kcards { display:block; } .kcard { border:none; border-radius:0; padding:0; margin:0 auto; page-break-after:always; break-after:page; width:180mm; }
+    .kcard:last-child { page-break-after:auto; break-after:auto; }
     aside, .top, #drawer, #toast, .noprint { display:none !important; }
     #app, main, #view { display:block; height:auto; overflow:visible; }
     body { background:#fff; } .pad { padding:0; } table { border-radius:0; }
@@ -168,6 +186,7 @@
     <button class="nav" data-view="place"><span data-ic="pin"></span>장소</button>
     <button class="nav" data-view="paste"><span data-ic="paste"></span>여러 건 넣기</button>
     <button class="nav" data-view="sheet"><span data-ic="sheet"></span>근태기록표</button>
+    <button class="nav" data-view="card"><span data-ic="card"></span>출퇴근카드</button>
     <div class="foot">
       <div id="who" style="color:#333d4b;font-weight:600"></div>
       <div id="ver"></div>
@@ -201,7 +220,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 12:17';
+  const VER = '2026-11-14 13:27';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -228,6 +247,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     undo: '<path d="M4 9h10a6 6 0 0 1 0 12H8M4 9l4-4M4 9l4 4"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
+    card: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16a3 3 0 0 1 6 0M14 10h4M14 14h4"/>',
     print: '<path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/>'
   };
   const ic = (n, s) => '<svg class="ic" width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (ICON[n] || '') + '</svg>';
@@ -273,10 +293,10 @@
     return out;
   }
 
-  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', paste: '여러 건 넣기', sheet: '근태기록표' };
-  const MONTHLY = { grid: 1, list: 1, miss: 1, log: 1, sheet: 1 }, HAS_CSV = { grid: 1, list: 1, miss: 1, log: 1, staff: 1, place: 1, sheet: 1 };
+  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', paste: '여러 건 넣기', sheet: '근태기록표', card: '출퇴근카드' };
+  const MONTHLY = { grid: 1, list: 1, miss: 1, log: 1, sheet: 1, card: 1 }, HAS_CSV = { grid: 1, list: 1, miss: 1, log: 1, staff: 1, place: 1, sheet: 1 };
   let ym = ymStr(new Date()), view = TITLE[store.get('pcView')] ? store.get('pcView') : 'grid', D = null, loadSeq = 0, idSeq = 0;
-  const needD = () => view === 'grid' || view === 'list' || view === 'miss';
+  const needD = () => view === 'grid' || view === 'list' || view === 'miss' || view === 'card';
   const cache = {};
   let fil = { no: '', type: '', place: '', fix: false }, sort = { k: 'wd', dir: -1 }, dk = null;
   const sel = new Set();
@@ -306,7 +326,7 @@
     $('monBox').classList.toggle('hidden', !MONTHLY[view]);
     $('nowBtn').classList.toggle('hidden', !MONTHLY[view] || ym === ymStr(new Date()));
     $('csvBtn').classList.toggle('hidden', !HAS_CSV[view]);
-    $('printBtn').classList.toggle('hidden', view !== 'sheet');
+    $('printBtn').classList.toggle('hidden', view !== 'sheet' && view !== 'card');
     document.querySelectorAll('aside .nav').forEach((b) => b.classList.toggle('sel', b.dataset.view === view));
     const cur = cache[ymStr(new Date())], n = cur ? missRows(cur).length : 0;
     $('missN').textContent = n; $('missN').classList.toggle('hidden', !n);
@@ -782,9 +802,67 @@
     return h + '</tbody></table>';
   }
 
+  // ── 출퇴근카드: 예전 지문 기계의 직원별 카드와 같은 양식 (한 사람 한 장, 인쇄용) ──
+  // 근무 형태는 그날 첫 출근 시각으로 정함: 오후 2시 전이면 주간(09:00-18:00), 그 뒤면 야간(17:00-다음날 09:00)
+  let cardNo = store.get('cardNo') || '';
+  function cardDay(items, wd) {
+    const ins = items.filter((r) => r.type === '출근'), outs = items.filter((r) => r.type === '퇴근');
+    const i = ins[0], o = outs[outs.length - 1];
+    const night = i ? Number(i.time.slice(0, 2)) >= 14 : (o ? o.day !== wd : false);
+    const start = kst(wd, night ? '17:00' : '09:00', false), end = kst(wd, night ? '09:00' : '18:00', night);
+    let late = 0, early = 0;
+    if (i && i.at - start >= 60000) late = Math.floor((i.at - start) / 60000);
+    if (o) {
+      let oat = o.at;
+      const oh = Number(o.time.slice(0, 2));
+      if (!night && o.day === wd && (oh === 16 || oh === 17)) oat += (18 - oh) * 3600000;   // 근태기록표와 같은 규칙: 16·17시대 퇴근은 18시대로 인정
+      if (end - oat >= 60000) early = Math.floor((end - oat) / 60000);
+    }
+    return { i: i, o: o, late: late, early: early };
+  }
+  function cardHtml(s) {
+    const [y, m] = ym.split('-').map(Number), last = new Date(y, m, 0).getDate(), mm = String(m).padStart(2, '0');
+    const by = byNoWd()[s.no] || {}, range = y + '/' + mm + '/01 ~ ' + mm + '/' + String(last).padStart(2, '0');
+    let rows = '', work = 0, lateN = 0, lateM = 0, earlyN = 0, earlyM = 0;
+    for (let d = 1; d <= last; d++) {
+      const wd = ym + '-' + String(d).padStart(2, '0'), w = new Date(y, m - 1, d).getDay(), items = by[wd] || [];
+      const c = items.length ? cardDay(items, wd) : null;
+      if (c) { work++; if (c.late) { lateN++; lateM += c.late; } if (c.early) { earlyN++; earlyM += c.early; } }
+      const tm = (r, cls) => r ? '<span class="' + cls + '">' + esc(r.time) + (r.fix ? '*' : '') + '</span>' + (r.day !== wd ? '<span class="nd"> 다음날</span>' : '') : '';
+      const rm = !c ? '' : !c.i ? '출근 기록 없음' : !c.o ? (wd === todayStr() ? '' : '퇴근 기록 없음') : '';
+      rows += '<tr><td class="' + (w === 0 ? 'sun' : w === 6 ? 'sat' : '') + '">' + String(d).padStart(2, '0') + ' ' + WEEK[w] + '</td>' +
+        '<td colspan="2">' + (c ? tm(c.i, 'ti') : '') + '</td><td colspan="2">' + (c ? tm(c.o, 'to') : '') + '</td>' +
+        (rm ? '<td colspan="4" class="rm bad">' + rm + '</td>' : '<td></td><td></td><td></td><td></td>') + '</tr>';
+    }
+    return '<div class="kcard"><h1>출퇴근카드</h1>' +
+      '<div class="kd">출근 일자<span>' + range + '</span></div>' +
+      '<table class="kt"><colgroup><col style="width:13%"><col style="width:9.5%"><col style="width:9.5%"><col style="width:9.5%"><col style="width:9.5%"><col style="width:12.25%"><col style="width:12.25%"><col style="width:12.25%"><col style="width:12.25%"></colgroup><tbody>' +
+      '<tr><td class="lb">부서</td><td colspan="4" class="big">' + esc(s.dept || '') + '</td><td class="lb">이름</td><td colspan="3" class="big">' + esc(s.name) + '</td></tr>' +
+      '<tr><td class="lb">일자</td><td colspan="4" class="big">' + range + '</td><td class="lb">번호</td><td colspan="3" class="big">' + esc(s.no) + '</td></tr>' +
+      '<tr><td class="lb" rowspan="2">결근(일)</td><td class="lb" rowspan="2">출근(일)</td><td class="lb" colspan="3">연장(시)</td><td class="lb" colspan="2">지각</td><td class="lb" colspan="2">조퇴</td></tr>' +
+      '<tr><td class="lb" colspan="2">연장</td><td class="lb">야근</td><td class="lb">(회)</td><td class="lb">(분)</td><td class="lb">(회)</td><td class="lb">(분)</td></tr>' +
+      '<tr><td></td><td>' + (work || '') + '</td><td colspan="2"></td><td></td><td>' + (lateN || '') + '</td><td>' + (lateM || '') + '</td><td>' + (earlyN || '') + '</td><td>' + (earlyM || '') + '</td></tr>' +
+      '<tr><td colspan="9">1. 09:00-18:00, 17:00-09:00</td></tr>' +
+      '<tr><td colspan="9" class="ttl">출퇴근기록표</td></tr>' +
+      '<tr><td class="lb" rowspan="2">일자/주</td><td class="lb" colspan="4">출퇴근</td><td class="lb" colspan="2">연장</td><td class="lb" colspan="2">야근</td></tr>' +
+      '<tr><td class="lb" colspan="2">출근</td><td class="lb" colspan="2">퇴근</td><td class="lb">시작</td><td class="lb">종료</td><td class="lb">시작</td><td class="lb">종료</td></tr>' +
+      rows + '</tbody></table></div>';
+  }
+  function cardStaff() { return gridStaff(byNoWd()); }
+  function renderCard() {
+    const staff = cardStaff();
+    if (!staff.some((s) => s.no === cardNo)) cardNo = staff.length ? staff[0].no : '';
+    $('filters').innerHTML = '<select id="cardSel">' + staff.map((s) => opt(s.no, cardNo, s.name + (s.dept ? ' · ' + s.dept : ''))).join('') + '</select>' +
+      '<button class="btn" data-act="cardAll">' + ic('print', 16) + '전체 인쇄</button>';
+    const s = staff.filter((x) => x.no === cardNo)[0];
+    $('view').innerHTML = s ? '<div class="pad"><div class="hint noprint">예전 지문 기계 카드와 같은 양식이에요. 지각·조퇴는 주간 09:00~18:00, 야간 17:00~다음날 09:00 기준으로 세고, 16·17시대 퇴근은 근태기록표처럼 18시대로 인정해요. * 는 관리자가 보정한 시각이에요.</div>' +
+      '<div class="kcards">' + cardHtml(s) + '</div></div>' : '<div class="empty">직원이 없어요</div>';
+  }
+
   function render() {
     setYm();
     if (view !== 'grid') $('drawer').classList.add('hidden');
+    if (view === 'card') { if (D) renderCard(); return; }
     if (view === 'today') return renderToday();
     if (view === 'log') return renderLog();
     if (view === 'staff') return renderStaff();
@@ -859,6 +937,13 @@
       }
       if (act === 'csv') return csv();
       if (act === 'print') { window.print(); return; }
+      if (act === 'cardAll') {             // 모든 직원 카드를 한 장씩 이어서 인쇄
+        if (!D) return;
+        const staff = cardStaff().filter((x) => x.status !== '퇴사' || Object.keys(byNoWd()[x.no] || {}).length);
+        $('view').innerHTML = '<div class="pad"><div class="kcards">' + staff.map(cardHtml).join('') + '</div></div>';
+        setTimeout(() => { window.print(); renderCard(); }, 50);
+        return;
+      }
       if (act === 'closeDrawer') { closeDrawer(); return; }
       if (act === 'undo') { const t = $('toast'); if (t._undo) { const f = t._undo; t._undo = null; t.classList.add('hidden'); f(); } return; }
       if (act === 'del') { const rec = recById(b.closest('[data-id]').dataset.id); if (rec) delRec(rec); return; }
@@ -964,6 +1049,7 @@
   document.addEventListener('change', async (ev) => {
     const t = ev.target;
     if (t.id === 'staffAll') { staffAll = t.checked; renderStaff(); return; }
+    if (t.id === 'cardSel') { cardNo = t.value; store.set('cardNo', cardNo); renderCard(); return; }
     if (t.matches('[data-selall]')) { sel.clear(); if (t.checked) listRows().forEach((r) => sel.add(r.id)); renderList(); return; }
     if (t.matches('[data-sel]')) { const id = t.closest('[data-id]').dataset.id; if (t.checked) sel.add(id); else sel.delete(id); bulkBar(); return; }
     const f = t.closest('[data-fil]');
