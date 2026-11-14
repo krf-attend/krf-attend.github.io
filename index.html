@@ -230,7 +230,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 01:10</div>
+    <div id="ver">화면 버전 2026-11-14 09:40</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -324,7 +324,8 @@
       method: 'POST',
       // text/plain 이어야 브라우저 사전요청 없이 Apps Script로 전달됨
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action: action }, payload))
+      body: JSON.stringify(Object.assign({ action: action }, payload)),
+      keepalive: action === 'punch'   // 출퇴근은 누른 뒤 바로 앱을 꺼도 끝까지 전송
     });
     return res.json();
   }
@@ -405,6 +406,7 @@
     if (s.admin && wantAdmin) { wantAdmin = false; setTimeout(() => { $('admin').classList.remove('hidden'); loadAdmin(); }, 0); }
     // 슈퍼관리자 휴대폰: 출퇴근 버튼 없이 관리자 화면만
     const sup = !!s.super;
+    try { store.set('isSuper', sup ? '1' : ''); } catch (e) {}   // 다음에 켤 때 관리자 화면을 바로 띄우려고 기억
     if (sup) { $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden'); }
     else { $('status').classList.remove('hidden'); $('punch').classList.remove('hidden'); $('histBtn').classList.remove('hidden'); }
     $('logoutBtn').classList.toggle('hidden', !sup);   // 슈퍼관리자 폰만 로그아웃 가능
@@ -435,7 +437,7 @@
     if (Notification.permission === 'granted') { btn.classList.add('hidden'); pushSubscribe().catch(() => {}); return; }
     btn.classList.remove('hidden');
   }
-  let myState = '', mates = [], picked = [], superOpened = false, places = [], lastMs = 0;
+  let myState = '', mates = [], picked = [], superOpened = false, superCached = false, places = [], lastMs = 0;
   // 서버와 같은 방식으로 폰에서 장소 판정 (못 맞히면 서버 답을 기다림)
   function localPlace(c) {
     if (!c || !places.length) return '';
@@ -504,6 +506,8 @@
   async function loadStatus() {
     try {
       const s = await api('status', { deviceId: deviceId });
+      // 기억해 둔 것과 달리 슈퍼관리자가 아니면(로그아웃 등) 미리 띄운 관리자 화면을 닫음
+      if (s && s.ok && !s.super && superCached) { superCached = false; superOpened = false; try { store.set('isSuper', ''); } catch (e) {} $('admin').classList.add('hidden'); }
       if (s && s.ok && handleAuth(s) && !s.super) applyStatus(s);
     } catch (e) {
       $('status').textContent = '';
@@ -634,6 +638,16 @@
         posErr: c ? '' : lastPosErr,
         alsoNos: alsoNos
       };
+      // 등록 장소 밖이거나 위치를 못 잡았으면 서버에 묻지 않고 바로 장소 고르기 (서버를 한 번만 다녀오도록)
+      if (!early && !localPlace(c) && places.length) {
+        show('');
+        const ch = places.map((p) => p.n);
+        if (ch.indexOf('외부') < 0) ch.push('외부');
+        const chosen0 = await choosePlace(guessType, ch);
+        if (!chosen0) { show('취소했어요\n다시 누르시면 됩니다', ''); return; }
+        show('기록 중…');
+        payload.place = chosen0;
+      }
       let d = await api('punch', payload);
       if (d.ok && d.needPlace) {
         early = false;
@@ -1178,6 +1192,12 @@
     render('main');                       // 등록된 폰이면 바로 출퇴근 화면 (서버 확인 후 필요하면 이름 고르기로)
     // 지난번 상태를 먼저 보여 주고 (기다리지 않게) 서버 답이 오면 바로 바꿈
     try { const ls = JSON.parse(store.get('lastStatus') || 'null'); if (ls && name) applyStatus(ls); } catch (e) {}
+    // 슈퍼관리자 폰: 서버 확인을 기다리지 않고 지난번 관리자 화면을 바로 띄움 (확인은 뒤에서)
+    if (store.get('isSuper') === '1') {
+      superCached = true; superOpened = true;
+      $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden');
+      $('admin').classList.remove('hidden'); loadAdmin();
+    }
     loadStatus();
     warmPosition();
     // 다른 앱에 갔다가 돌아왔을 때도 다시 확인
