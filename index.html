@@ -81,6 +81,7 @@
   .hrow .in { color:var(--ok); font-weight:800; }
   .hrow .out { color:#b35a00; font-weight:800; }
   .hrow .dur { color:#555; font-size:18px; }
+  .hrow .pl { color:#1f5fbf; font-size:18px; font-weight:700; }
   .hempty { font-size:22px; color:#888; text-align:center; margin-top:40px; }
   .cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; margin-bottom:10px; }
   .cw { text-align:center; font-size:16px; font-weight:800; color:#555; padding:2px 0; }
@@ -230,7 +231,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 10:40</div>
+    <div id="ver">화면 버전 2026-11-14 11:00</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -866,6 +867,11 @@
   // 관리자가 보정으로 넣은 시각에는 * 표시
   const tmS = (it) => it.time + (it.fix ? '*' : '');
   let histDays = {};
+  // 시각 뒤에 출퇴근 장소를 작게 붙임
+  function tmP(it) {
+    const p = String(it.place || '').replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+    return tmS(it) + (p ? ' <span class="pl">' + p + '</span>' : '');
+  }
   function showDay(date) {
     document.querySelectorAll('.cday.sel').forEach((e) => e.classList.remove('sel'));
     const cell = document.querySelector('.cday[data-d="' + date + '"]');
@@ -880,18 +886,18 @@
       pairsOf(histDays[k]).forEach((p) => {
         if (!p.out || p.out.day !== date) return;
         carried++;
-        if (p.in) html += '<div class="hrow"><span class="in">출근</span> 전날 ' + tmS(p.in) + ' → <span class="out">퇴근</span> ' + tmS(p.out) +
+        if (p.in) html += '<div class="hrow"><span class="in">출근</span> 전날 ' + tmP(p.in) + ' → <span class="out">퇴근</span> ' + tmP(p.out) +
           ' <span class="dur">(' + hm(p.out.at - p.in.at) + ')</span></div>';
-        else html += '<div class="hrow"><span class="out">퇴근</span> ' + tmS(p.out) + '</div>';
+        else html += '<div class="hrow"><span class="out">퇴근</span> ' + tmP(p.out) + '</div>';
       });
     });
     if (!day) { if (!carried) html += '<div class="hrow" style="color:#888">기록 없음</div>'; }
     else pairsOf(day).forEach((p) => {
       const next = (it) => (it.day !== date ? '다음날 ' : '');
-      if (p.in && p.out) html += '<div class="hrow"><span class="in">출근</span> ' + tmS(p.in) + ' → <span class="out">퇴근</span> ' + next(p.out) + tmS(p.out) +
+      if (p.in && p.out) html += '<div class="hrow"><span class="in">출근</span> ' + tmP(p.in) + ' → <span class="out">퇴근</span> ' + next(p.out) + tmP(p.out) +
         ' <span class="dur">(' + hm(p.out.at - p.in.at) + ')</span></div>';
-      else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + tmS(p.in) + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
-      else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + tmS(p.out) + '</div>';
+      else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + tmP(p.in) + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
+      else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + tmP(p.out) + '</div>';
     });
     $('histDetail').innerHTML = html;
   }
