@@ -642,7 +642,7 @@
   H.adminRecords = async function (p) {
     if (!isAdmin()) return { ok: false, error: 'not admin' };
     const all = docs(await db.collection('records').where('month', '==', p.month).where('no', '==', String(p.no)).get());
-    const rec = (d) => ({ row: d.id, at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at), type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || '') });
+    const rec = (d) => ({ row: d.id, at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at), type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), cls: d.cls || '' });
     const records = all.filter((d) => !d.del).map(rec).sort((a, b) => b.at - a.at);
     const deleted = all.filter((d) => d.del).map((d) => Object.assign(rec(d), { log: d.id, by: d.delBy || '', when: d.delAt ? stamp(d.delAt) : '', full: true })).sort((a, b) => b.at - a.at);
     return { ok: true, records: records, deleted: deleted, places: await placeChoices() };
@@ -851,7 +851,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-15 01:00';
+  const VER = '2026-11-15 01:11';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
