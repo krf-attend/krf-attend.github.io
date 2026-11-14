@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:17</div>
+    <div id="ver">화면 버전 2026-11-14 11:34</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -285,6 +285,8 @@
 
 <script>
   // ▼ 기록 서버(Google Apps Script 웹 앱) 주소
+  // 넓은 화면(PC)에서는 관리 화면으로 보냄. PC에서 휴대폰 화면을 보려면 주소 끝에 ?m=1
+  if (window.innerWidth >= 1000 && !('ontouchstart' in window) && !navigator.maxTouchPoints && !/[?&]m=1/.test(location.search)) location.replace('pc.html');
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
 
   const $ = (id) => document.getElementById(id);
@@ -1111,7 +1113,7 @@
     if (!d.working.length) h += '<div class="aempty">출근 중인 사람이 없어요</div>';
     else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span>' + (w.nogps ? ' <span class="atag wait">📍 위치 없음</span>' : '') + '</div>').join('') + '</div>';
     aStaff = d.staff; aSuper = d.super;
-    h += '<div class="acard"><button class="abtn" data-op="missing" style="width:100%">🔎 빠진 기록 모아 보기</button></div>';
+    h += '<div class="acard"><button class="abtn" data-op="missing" style="width:100%">🔎 빠진 기록 모아 보기</button>' + (d.super ? '<button class="abtn" data-op="pcpair" style="width:100%;margin-top:8px">💻 PC 연결</button>' : '') + '</div>';
     h += '<div id="aStaff"></div>';
     body.innerHTML = h;
     renderStaff();
@@ -1538,6 +1540,13 @@
     const b = ev.target.closest('button[data-op]');
     if (!b) return;
     const op = b.dataset.op, no = b.dataset.no, nm = b.dataset.name || '', v = b.dataset.v || '';
+    if (op === 'pcpair') {   // PC 화면에 뜬 숫자를 넣어 그 PC를 관리 화면으로 연결
+      const code = (prompt('PC 화면에 보이는 숫자 여섯 자리를 넣어 주세요') || '').replace(/\D/g, '');
+      if (!code) return;
+      let pr = null; try { pr = await api('pcApprove', { deviceId: deviceId, code: code }); } catch (e) { pr = null; }
+      alert(pr && pr.ok ? 'PC가 연결됐어요. PC 화면이 곧 바뀝니다.' : ((pr && pr.error) || '연결하지 못했어요. 인터넷을 확인해 주세요'));
+      return;
+    }
     if (op === 'missing') { misYM = ''; openMissing(); return; }
     if (op === 'records') { edYM = ''; edBackCal = null; edBackMis = false; edAddPre = null; edFocus = ''; openRecords(no, nm); return; }
     if (op === 'cal') { openHist(no, nm); return; }
