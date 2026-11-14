@@ -233,7 +233,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 13:00</div>
+    <div id="ver">화면 버전 2026-11-14 13:20</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -928,11 +928,20 @@
       if (mm <= nowYM && !(histCache[histKey(mm)] || {}).d) await histFetch(mm);
     }
   }
+  // 관리자가 직원 달력을 볼 때 그 달의 '기록 고치기' 내용도 미리 받아 둠 (고치러 갈 때 바로 뜨게)
+  const recWarmAt = {};
+  function recWarm(no, ym) {
+    const key = 'recCache:' + no + ':' + ym;
+    if (edQ().length || Date.now() - (recWarmAt[key] || 0) < 30000) return;
+    recWarmAt[key] = Date.now();
+    api('adminRecords', { deviceId: deviceId, no: no, month: ym }).then((d) => { if (d && d.ok && !edQ().length) store.set(key, JSON.stringify(d)); }).catch(() => {});
+  }
   async function loadHist() {
     const [y, m] = histYM.split('-').map(Number);
     $('histMonth').textContent = y + '년 ' + m + '월';
     $('histNext').disabled = histYM >= ymStr(new Date());
     const ym = histYM, no = histNo, c = histCache[histKey(ym)], had = !!(c && c.d), sig = had ? JSON.stringify(c.d.days) : '';
+    if (no !== null) recWarm(no, ym);
     if (had) { drawHist(c.d); if (Date.now() - c.t < 60000) { histWarm(); return; } }
     else { $('histSum').textContent = '불러오는 중…'; $('histList').innerHTML = ''; }
     let d;
@@ -1169,15 +1178,17 @@
     let c = null;
     try { c = JSON.parse(store.get(key) || 'null'); } catch (e) {}
     body.classList.remove('stale');
-    if (c) { body.insertAdjacentHTML('afterbegin', staleNote('🔄 최신 내용으로 바꾸는 중… (잠시 버튼이 막혀요)')); fillRecords(c); body.classList.add('stale'); }
+    if (c) { fillRecords(c); edNote(); }   // 저장해 둔 내용을 바로 보여 주고 버튼도 바로 쓸 수 있게 함 (최신 내용은 뒤에서 확인)
     if (edQ().length) await edWait(8000);   // 아직 저장 중인 수정이 있으면 먼저 저장하고 받아 옴
     let d;
     try { d = await api('adminRecords', { deviceId: deviceId, no: no, month: edYM }); } catch (e) { d = null; }
     if (d && d.ok && !edQ().length) store.set(key, JSON.stringify(d));
     if (seq !== admSeq || admView !== 'rec') return;
     if (d && d.ok && edQ().length) { setStale(false); edNote(); return; }   // 그사이 또 고쳤으면 화면(고친 내용)을 그대로 둠
+    // 바뀐 게 없거나 고치는 칸을 열어 둔 중이면 화면을 다시 그리지 않음 (고치던 내용이 사라지지 않게)
+    if (d && d.ok && c && (JSON.stringify(d) === JSON.stringify(c) || body.querySelector('.edSlot:not(:empty)') || ($('edAdd') && $('edAdd').innerHTML))) { setStale(false); edNote(); return; }
     if (!d || !d.ok) {
-      if (c) setStale(true, '⚠ 새로 고치지 못했어요. 목록으로 갔다가 다시 열어 주세요');
+      if (c) edNote();   // 새로 받지 못해도 저장해 둔 내용으로 계속 고칠 수 있음 (서버가 저장할 때 다시 확인)
       else if ($('edList')) $('edList').innerHTML = '<div class="aempty">불러오지 못했어요</div>';
       return;
     }
