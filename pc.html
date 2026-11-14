@@ -216,10 +216,568 @@
 <div id="toast" class="hidden"></div>
 
 <script>
+/* ───────── KRF출퇴근 DB(파이어베이스 Firestore) 연결 ─────────
+ * 화면 코드는 예전처럼 api(action, payload)를 부르고, 여기서 서버와 같은 모양의 답을 DB로 만들어 줌.
+ * - DB에 저장한 뒤 서버(fbMirror)에 알려 구글 시트에도 바로 반영 (기다리지 않음. 놓치면 서버가 1시간마다 채움)
+ * - DB가 막히면(한도 초과·연결 실패) can()이 false가 되어 예전처럼 서버로 감
+ */
+(function () {
+  'use strict';
+  const CFG = {
+    apiKey: 'AIzaSyAC6iwT_XpB1pPBhVkQbKyDAULzlQj91B8',
+    authDomain: 'krf-attend.firebaseapp.com',
+    projectId: 'krf-attend',
+    storageBucket: 'krf-attend.firebasestorage.app',
+    messagingSenderId: '66480578546',
+    appId: '1:66480578546:web:16bf113b88ee316dd4956b'
+  };
+  const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  const TZ_OFF = 9 * 3600 * 1000;                 // 한국 시간
+  const MAX_SHIFT_MS = 16 * 3600 * 1000;           // 출근 후 이 시간이 지나면 다음 누름은 새 출근
+  const DEDUP_MS = 60 * 1000;                      // 1분 안에 연달아 누르면 무시
+  const DEFAULT_RADIUS = 150;
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+
+  let db = null, auth = null, uid = '', deviceId = '', server = null;
+  let dv = null, bind = null, staffMe = null, broken = false, readyP = null;
+
+  /* ── 작은 도구 ── */
+  const pad = (n) => String(n).padStart(2, '0');
+  const kParts = (ms) => { const d = new Date(ms + TZ_OFF); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), w: d.getUTCDay() }; };
+  const ymd = (ms) => { const p = kParts(ms); return p.y + '-' + pad(p.m) + '-' + pad(p.d); };
+  const hm = (ms) => { const p = kParts(ms); return pad(p.h) + ':' + pad(p.mi); };
+  const display = (ms) => { const p = kParts(ms); return p.m + '월 ' + p.d + '일 ' + pad(p.h) + ':' + pad(p.mi); };
+  const stamp = (ms) => { const p = kParts(ms); return p.m + '/' + p.d + ' ' + pad(p.h) + ':' + pad(p.mi); };
+  const kst = (day, time) => Date.parse(day + 'T' + time + ':00+09:00');
+  const prevMonth = (ym) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 2, 15)); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1); };
+  const newId = () => (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).replace(/[^a-z0-9]/g, '').slice(0, 20);
+  const fresh = (ms) => Date.now() - ms;
+  function loadScript(src) {
+    return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); });
+  }
+  function timeout(p, ms, what) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout ' + (what || ''))), ms))]); }
+  function mirror(kind, ids) {   // 시트에 바로 반영해 달라고 서버에 알림 (기다리지 않음)
+    if (!server || !ids || !ids.length) return;
+    try { server('fbMirror', { kind: kind, ids: ids.slice(0, 50) }).catch(() => {}); } catch (e) {}
+  }
+  function docs(snap) { const a = []; snap.forEach((d) => a.push(Object.assign({ id: d.id }, d.data()))); return a; }
+  async function getDoc(path) { const s = await db.doc(path).get(); return s.exists ? Object.assign({ id: s.id }, s.data()) : null; }
+
+  /* ── 시작: SDK 불러오기 → 익명 로그인 → 이 기기가 누구인지 확인 ── */
+  async function start() {
+    if (!window.firebase) {
+      await loadScript(SDK + 'firebase-app-compat.js');
+      await Promise.all([loadScript(SDK + 'firebase-auth-compat.js'), loadScript(SDK + 'firebase-firestore-compat.js')]);
+    }
+    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(CFG);
+    auth = app.auth();
+    db = app.firestore();
+    try { await db.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* 사파리 사생활 모드 등: 휴대폰 저장 없이 그대로 씀 */ }
+    if (!auth.currentUser) {
+      await new Promise((res) => { const off = auth.onAuthStateChanged((u) => { off(); res(u); }); });
+      if (!auth.currentUser) await auth.signInAnonymously();
+    }
+    uid = auth.currentUser.uid;
+    await refreshDevice(false);
+    return true;
+  }
+  /** devices/{uid}가 없거나 다른 기기 것이거나 아직 승인 전이면 서버에 다시 확인받음 */
+  async function refreshDevice(force) {
+    dv = await getDoc('devices/' + uid).catch(() => null);
+    const stale = !dv || dv.deviceId !== deviceId || (!dv.super && !dv.no);
+    if (force || stale) {
+      bind = await server('fbBind', { deviceId: deviceId, uid: uid });
+      if (!bind || !bind.ok) throw new Error('bind failed');
+      dv = { deviceId: deviceId, no: bind.no, super: bind.super, pc: bind.pc, name: bind.name || '' };
+    } else bind = bind || { ok: true, auth: 'ok', no: dv.no, super: dv.super, pc: dv.pc };
+    staffMe = (dv.no && !dv.super) ? await getDoc('staff/' + dv.no).catch(() => null) : null;
+    if (staffMe && staffMe.status === '퇴사') bind = Object.assign({}, bind, { auth: 'retired' });
+  }
+  const isSuper = () => !!(dv && dv.super);
+  const isAdmin = () => isSuper() || !!(staffMe && staffMe.admin && staffMe.status !== '퇴사');
+  const myName = () => isSuper() ? (dv && dv.name) || (bind && bind.name) || '관리자' : (staffMe ? staffMe.name : '');
+
+  /* ── 공통 읽기 ── */
+  async function places() {
+    const a = docs(await db.collection('places').get()).filter((p) => !p.del);
+    a.sort((x, y) => (x.order || 99) - (y.order || 99));
+    return a;
+  }
+  async function placeChoices() {
+    const n = (await places()).map((p) => p.name);
+    if (n.indexOf('외부') < 0) n.push('외부');
+    return n;
+  }
+  function distance(lat1, lng1, lat2, lng2) {
+    const R = 6371000, rad = Math.PI / 180, dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  function matchPlace(lat, lng, list) {
+    if (lat === '' || lng === '' || lat == null || lng == null) return '위치 없음';
+    let best = '외부', bestD = Infinity;
+    list.forEach((p) => { if (p.lat == null || p.lng == null) return; const d = distance(Number(lat), Number(lng), p.lat, p.lng); if (d <= (p.radius || DEFAULT_RADIUS) && d < bestD) { best = p.name; bestD = d; } });
+    return best;
+  }
+  async function allStaff() {
+    const a = docs(await db.collection('staff').get());
+    a.forEach((e) => { e.order = Number(e.order) || 999; });
+    a.sort((x, y) => x.order - y.order);
+    return a;
+  }
+  async function monthRecs(month, no) {
+    let q = db.collection('records').where('month', '==', month);
+    if (no != null) q = q.where('no', '==', String(no));
+    return docs(await q.get()).filter((d) => !d.del);
+  }
+  /** 한 사람의 이번 달·지난달 기록 중 가장 늦은 것 → latest/{no} 다시 계산 */
+  async function recomputeLatest(no) {
+    const now = Date.now(), m = ymd(now).slice(0, 7);
+    const a = (await monthRecs(m, no)).concat(await monthRecs(prevMonth(m), no));
+    let best = null;
+    a.forEach((d) => { if (!best || d.at > best.at) best = d; });
+    const ref = db.doc('latest/' + encodeURIComponent(String(no)));
+    if (best) await ref.set({ no: String(no), type: best.type, at: best.at, wd: best.wd, place: best.place, nogps: best.lat == null && !/관리자 추가/.test(best.how || ''), id: best.id });
+    else await ref.delete();
+  }
+  const working = (l, now) => !!l && l.type === '출근' && (now - l.at) <= MAX_SHIFT_MS;
+
+  /* ───────── 화면이 부르는 기능들 (서버와 같은 모양의 답) ───────── */
+  const H = {};
+
+  H.status = async function () {
+    if (!bind || bind.auth !== 'ok') {   // 승인을 기다리는 중이면 서버에 다시 물어봄
+      if (bind && bind.auth === 'pending') await refreshDevice(true).catch(() => {});
+    }
+    if (!bind || bind.auth !== 'ok') {
+      const out = { ok: true, auth: bind ? bind.auth : 'none', name: bind ? bind.name : '' };
+      if (out.auth === 'none') out.staff = (await H.staff()).staff;
+      return out;
+    }
+    if (isSuper()) {
+      const st = await allStaff();
+      return { ok: true, auth: 'ok', super: true, admin: true, name: myName(), pend: st.filter((e) => e.dev && !e.ok && e.status !== '퇴사').length, vapid: await vapid() };
+    }
+    const now = Date.now(), L = await getDoc('latest/' + encodeURIComponent(dv.no));
+    const w = working(L, now);
+    const base = L ? { ok: true, state: w ? 'working' : 'off', type: L.type, time: display(L.at), place: L.place, lastMs: L.at } : { ok: true, state: 'none' };
+    base.auth = 'ok'; base.name = myName(); base.admin = isAdmin();
+    if (base.admin) { const st = await allStaff(); base.pend = st.filter((e) => e.dev && !e.ok && e.status !== '퇴사').length; base.vapid = await vapid(); }
+    base.places = (await places()).filter((p) => p.lat != null).map((p) => ({ n: p.name, lat: p.lat, lng: p.lng, r: p.radius || DEFAULT_RADIUS }));
+    base.mates = staffMe && staffMe.mate ? await mateCandidates(w, L ? L.place : '') : [];
+    return base;
+  };
+  let vapidKey = null;
+  const VAPID_PUBLIC = 'BLo31HxbCawlVXh3g8grDhd3ZlQ5VFBh77UXT0_FJky7WYVHvFhMCegJatCfDJSVTa41_d7Ip9a14K_iTBuhKbU';   // 알림용 공개 키 (서버와 같음)
+  async function vapid() { if (vapidKey === null) { const c = await getDoc('pub/cfg').catch(() => null); vapidKey = (c && c.vapid) || VAPID_PUBLIC; } return vapidKey; }
+  async function pick() { const p = await getDoc('pub/pick'); return p ? JSON.parse(p.list) : []; }
+  async function mateCandidates(iAmWorking, myPlace) {
+    const now = Date.now(), list = (await pick()).filter((e) => (e.status || '재직') === '재직' && String(e.no) !== String(dv.no));
+    const latest = {};
+    docs(await db.collection('latest').get()).forEach((l) => { latest[l.no] = l; });
+    const cnt = {};
+    list.forEach((e) => { cnt[e.name] = (cnt[e.name] || 0) + 1; });
+    const out = [];
+    list.forEach((e, i) => {
+      const r = latest[String(e.no)];
+      if (working(r, now) !== iAmWorking) return;
+      out.push({ no: e.no, name: cnt[e.name] > 1 ? e.name + '(' + e.no + ')' : e.name, same: r && myPlace && r.place === myPlace ? 1 : 0, order: i });
+    });
+    out.sort((a, b) => (b.same - a.same) || (a.order - b.order));
+    return out.map((o) => ({ no: o.no, name: o.name }));
+  }
+
+  H.staff = async function () { return { ok: true, staff: (await pick()).map((e) => ({ no: e.no, name: e.name, dept: e.dept, dup: e.dup, taken: e.taken })) }; };
+
+  /** 처음 쓰는 휴대폰: 이름 골라 등록 신청 */
+  H.register = async function (p) {
+    if (isSuper() || (dv && dv.pc)) return { ok: false, error: '관리자 휴대폰이에요' };
+    if (bind && bind.auth === 'ok') return { ok: true, auth: 'ok', name: myName() };
+    const list = await pick(), t = list.filter((e) => String(e.no) === String(p.no))[0];
+    if (!t || t.status === '퇴사') return { ok: false, error: 'no staff' };
+    const before = bind && bind.pendNo;
+    if (before && before !== String(p.no)) {   // 승인 전 다른 이름을 골랐던 것 취소
+      await db.doc('staff/' + before).update({ dev: '', ok: false, req: null, upd: Date.now(), sheet: false }).catch(() => {});
+    }
+    if (before !== String(p.no)) {
+      try { await db.doc('staff/' + String(p.no)).update({ dev: deviceId, ok: false, req: Date.now(), upd: Date.now(), sheet: false }); }
+      catch (e) { return { ok: true, auth: 'taken', name: t.name }; }   // 이미 다른 휴대폰이 등록함
+      mirror('staff', before ? [before, String(p.no)] : [String(p.no)]);
+      try { server('fbNotify', {}).catch(() => {}); } catch (e) {}
+    }
+    bind = Object.assign({}, bind, { auth: 'pending', pendNo: String(p.no), name: t.name });
+    return { ok: true, auth: 'pending', name: t.name };
+  };
+
+  H.history = async function (p) {
+    const key = (p.no != null && p.no !== '') ? String(p.no) : (dv && dv.no);
+    if (!key) return { ok: true, month: p.month, days: [] };
+    const days = {};
+    (await monthRecs(p.month, key)).forEach((d) => {
+      (days[d.wd] = days[d.wd] || []).push({ type: d.type, at: d.at, time: hm(d.at), day: ymd(d.at), place: d.place || '', fix: !!d.fix });
+    });
+    const list = Object.keys(days).sort().reverse().map((k) => ({ date: k, items: days[k].sort((a, b) => a.at - b.at) }));
+    return { ok: true, month: p.month, days: list };
+  };
+
+  /** 출퇴근 (휴대폰에 먼저 저장된 누름을 DB에 씀. 같은 누름(cid)은 한 번만) */
+  H.punch = async function (data) {
+    if (isSuper()) return { ok: false, error: '관리자 전용 휴대폰은 출퇴근을 찍지 않아요' };
+    if (dv.pc) return { ok: false, error: 'PC에서는 출퇴근을 찍을 수 없어요' };
+    if (!bind || bind.auth !== 'ok') return { ok: true, auth: bind ? bind.auth : 'none', name: myName() };
+    const now = Date.now(), at = Number(data.at) > 0 ? Math.min(Number(data.at), now) : now;
+    const late = Number(data.sent) - at > 90 * 1000 || now - at > 90 * 1000;
+    const cid = String(data.cid || newId()).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || newId();
+    const exist = await getDoc('records/' + cid).catch(() => null);
+    if (exist) return { ok: true, duplicate: true, resent: true, type: exist.type, time: display(exist.at), place: exist.place };
+    const L = await getDoc('latest/' + encodeURIComponent(dv.no));
+    if (L && !late && Math.abs(at - L.at) < DEDUP_MS) return { ok: true, duplicate: true, type: L.type, time: display(L.at), place: L.place };
+    let type, wd;
+    if (L && L.type === '출근' && at > L.at && (at - L.at) <= MAX_SHIFT_MS) { type = '퇴근'; wd = L.wd; } else { type = '출근'; wd = ymd(at); }
+    if (late && (data.type === '출근' || data.type === '퇴근') && data.type !== type) {
+      type = data.type;
+      wd = (type === '퇴근' && L && L.type === '출근' && (at - L.at) <= 24 * 3600 * 1000) ? L.wd : ymd(at);
+    }
+    const pl = await places();
+    let place = matchPlace(data.lat, data.lng, pl), how = 'GPS';
+    if (place === '외부' || place === '위치 없음') {
+      const choices = pl.map((p) => p.name).concat(pl.some((p) => p.name === '외부') ? [] : ['외부']);
+      if (!data.place) return { ok: true, needPlace: true, type: type, choices: choices };
+      if (choices.indexOf(String(data.place)) < 0) return { ok: false, error: 'bad place' };
+      place = String(data.place); how = '직접 선택';
+    }
+    const noPos = data.lat === '' || data.lng === '' || data.lat == null || data.lng == null;
+    const why = String(data.posErr || '').slice(0, 20);
+    const num = (v) => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+    const rec = { no: String(dv.no), name: myName(), at: at, wd: wd, month: wd.slice(0, 7), type: type, place: place,
+                  addr: noPos ? '위치 없음' + (why ? '(' + why + ')' : '') : '', lat: num(data.lat), lng: num(data.lng), acc: num(data.acc),
+                  how: how + (late ? ' · 나중 전송' : ''), dev: deviceId, excl: false, fix: false, sheet: false, upd: now };
+    const batch = db.batch(), ids = [cid];
+    batch.set(db.doc('records/' + cid), rec);
+    batch.set(db.doc('latest/' + encodeURIComponent(dv.no)), { no: rec.no, type: type, at: at, wd: wd, place: place, nogps: noPos, id: cid });
+    // 같이 찍기: 상태가 맞는 사람만
+    const also = [];
+    if (staffMe && staffMe.mate && Array.isArray(data.alsoNos) && data.alsoNos.length) {
+      const list = await pick(), seen = {};
+      for (const n of data.alsoNos) {
+        const key = String(n);
+        if (seen[key] || key === String(dv.no)) continue;
+        seen[key] = true;
+        const e = list.filter((x) => String(x.no) === key && (x.status || '재직') === '재직')[0];
+        if (!e) continue;
+        const r = await getDoc('latest/' + encodeURIComponent(key)).catch(() => null), w = working(r, at);
+        if ((type === '퇴근' && !w) || (type === '출근' && w)) continue;
+        const id2 = cid + 'm' + key, wd2 = type === '퇴근' ? r.wd : ymd(at);
+        batch.set(db.doc('records/' + id2), Object.assign({}, rec, { no: key, name: e.name, wd: wd2, month: wd2.slice(0, 7), how: '대리' + type + '(' + myName() + ')', dev: '' }));
+        batch.set(db.doc('latest/' + encodeURIComponent(key)), { no: key, type: type, at: at, wd: wd2, place: place, nogps: noPos, id: id2 });
+        ids.push(id2); also.push(e.name);
+      }
+    }
+    // 전파가 약하면 휴대폰에 저장해 두었다가 나중에 보냄(파이어베이스가 알아서). 3초만 기다리고 '완료'
+    const sent = batch.commit().then(() => mirror('records', ids));
+    try { await timeout(sent, 3000, 'punch'); } catch (e) { if (!/timeout/.test(e.message)) throw e; }
+    return { ok: true, type: type, time: display(at), name: myName(), place: place, also: also };
+  };
+
+  /* ── 관리자 ── */
+  H.admin = async function () {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const now = Date.now(), st = await allStaff(), latest = {};
+    docs(await db.collection('latest').get()).forEach((l) => { latest[l.no] = l; });
+    const pending = st.filter((e) => e.dev && !e.ok && e.status !== '퇴사').map((e) => ({ no: e.no, name: e.name, dept: e.dept, req: e.req ? display(e.req) : '' }));
+    const workingList = [];
+    st.forEach((e) => { const r = latest[String(e.no)]; if (working(r, now)) workingList.push({ name: e.name, time: hm(r.at), place: r.place || '', nogps: !!r.nogps }); });
+    const staff = st.map((e) => ({ no: e.no, name: e.name, dept: e.dept, status: e.status, registered: !!e.dev, ok: !!e.ok, admin: !!e.admin, mate: !!e.mate, me: String(e.no) === String(dv.no) }));
+    return { ok: true, super: isSuper(), pending: pending, working: workingList, staff: staff };
+  };
+
+  H.adminDo = async function (p) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const no = String(p.no), e = await getDoc('staff/' + no);
+    if (!e) return { ok: false, error: 'no staff' };
+    const isMe = no === String(dv.no), up = { upd: Date.now(), sheet: false };
+    if (p.op === 'approve') { if (!e.dev) return { ok: false, error: '등록 신청이 없어요' }; up.ok = true; }
+    else if (p.op === 'reject' || p.op === 'reset') { if (isMe) return { ok: false, error: '내 휴대폰은 여기서 초기화할 수 없어요' }; up.dev = ''; up.ok = false; up.req = null; }
+    else if (p.op === 'admin') { if (!isSuper()) return { ok: false, error: '슈퍼관리자만 관리자를 정할 수 있어요' }; up.admin = p.value === '1' || p.value === true; }
+    else if (p.op === 'mate') up.mate = p.value === '1' || p.value === true;
+    else if (p.op === 'status') {
+      if (['재직', '휴직', '퇴사'].indexOf(p.value) < 0) return { ok: false, error: 'bad value' };
+      if (isMe && p.value !== '재직') return { ok: false, error: '내 상태는 여기서 바꿀 수 없어요' };
+      up.status = p.value;
+    } else return { ok: false, error: 'bad op' };
+    await db.doc('staff/' + no).update(up);
+    mirror('staff', [no]);
+    return { ok: true };
+  };
+
+  H.adminStaffSave = async function (d) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const name = String(d.name || '').trim().slice(0, 20), dept = String(d.dept || '').trim();
+    if (!name) return { ok: false, error: '이름을 넣어 주세요' };
+    if (['순국', '기억', '주간', '없음'].indexOf(dept) < 0) return { ok: false, error: '부서를 골라 주세요' };
+    const st = await allStaff();
+    if (d.no === undefined || d.no === null || d.no === '') {
+      if (st.some((e) => e.name === name && e.status !== '퇴사')) return { ok: false, error: '같은 이름의 직원이 이미 있어요' };
+      let maxNo = 0, maxOrd = 0;
+      st.forEach((e) => { maxNo = Math.max(maxNo, Number(e.no) || 0); if (e.order < 999) maxOrd = Math.max(maxOrd, e.order); });
+      const no = String(maxNo + 1);
+      await db.doc('staff/' + no).set({ no: no, name: name, order: maxOrd + 1, dept: dept, status: '재직', dev: '', ok: false, admin: false, mate: false, req: null, upd: Date.now(), sheet: false });
+      mirror('staff', [no]);
+      return { ok: true, no: maxNo + 1 };
+    }
+    const no = String(d.no), e = st.filter((x) => String(x.no) === no)[0];
+    if (!e) return { ok: false, error: '직원을 찾지 못했어요' };
+    if (name !== e.name && st.some((x) => String(x.no) !== no && x.name === name && x.status !== '퇴사')) return { ok: false, error: '같은 이름의 직원이 이미 있어요' };
+    await db.doc('staff/' + no).update({ name: name, dept: dept, upd: Date.now(), sheet: false });
+    mirror('staff', [no]);
+    return { ok: true };
+  };
+
+  H.adminPlaces = async function () {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    return { ok: true, defaultRadius: DEFAULT_RADIUS, places: (await places()).map((p, i) => ({ row: p.id, name: p.name, addr: p.addr || '', lat: p.lat == null ? '' : p.lat, lng: p.lng == null ? '' : p.lng, radius: p.radius || DEFAULT_RADIUS, memo: p.memo || '' })) };
+  };
+  H.adminPlaceSave = async function (d) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const addr = String(d.addr || '').trim(), radius = Number(d.radius);
+    if (!(radius >= 30 && radius <= 2000)) return { ok: false, error: '반경은 30~2000 사이 숫자로 넣어 주세요' };
+    let lat = (d.lat === '' || d.lat == null) ? '' : Number(d.lat), lng = (d.lng === '' || d.lng == null) ? '' : Number(d.lng);
+    if ((lat !== '' && isNaN(lat)) || (lng !== '' && isNaN(lng))) return { ok: false, error: '위도·경도는 숫자로 넣어 주세요' };
+    if (lat === '' || lng === '') {
+      if (!addr) return { ok: false, error: '주소나 위도·경도를 넣어 주세요' };
+      const g = await server('fbGeocode', { addr: addr });   // 주소 → 위치는 구글 지도 기능이라 서버에서
+      if (!g || !g.ok) return { ok: false, error: (g && g.error) || '주소로 위치를 찾지 못했어요' };
+      lat = g.lat; lng = g.lng;
+    }
+    const name = String(d.name || '').trim().slice(0, 20), list = await places();
+    if (d.row) {
+      const cur = list.filter((p) => p.id === String(d.row))[0];
+      if (!cur || cur.name !== name) return { ok: false, error: '장소 목록이 바뀌었어요. 새로 고침해 주세요' };
+      await db.doc('places/' + cur.id).update({ addr: addr, lat: lat, lng: lng, radius: radius, sheet: false });
+      mirror('places', [cur.id]);
+    } else {
+      if (!name || ['외부', '위치 없음', '전체'].indexOf(name) >= 0) return { ok: false, error: '쓸 수 없는 장소 이름이에요' };
+      if (list.some((p) => p.name === name)) return { ok: false, error: '같은 이름의 장소가 이미 있어요' };
+      const id = encodeURIComponent(name);
+      await db.doc('places/' + id).set({ name: name, addr: addr, lat: lat, lng: lng, radius: radius, memo: '', order: list.length + 1, sheet: false });
+      mirror('places', [id]);
+    }
+    return { ok: true, lat: lat, lng: lng };
+  };
+  H.adminPlaceDelete = async function (d) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const name = String(d.name || '').trim(), cur = (await places()).filter((p) => p.id === String(d.row) && p.name === name)[0];
+    if (!cur) return { ok: false, error: '장소 목록이 바뀌었어요. 새로 고침해 주세요' };
+    const used = await db.collection('records').where('place', '==', name).limit(1).get();
+    if (!used.empty) return { ok: false, error: name + ' 장소로 찍힌 기록이 있어서 지울 수 없어요.\n그 기록들의 장소를 먼저 다른 곳으로 바꾼 뒤 지워 주세요.' };
+    await db.doc('places/' + cur.id).update({ del: true, sheet: false });   // 시트에서 지운 뒤 서버가 문서도 지움
+    mirror('places', [cur.id]);
+    return { ok: true };
+  };
+
+  /** 한 직원의 한 달 기록 + 지운 기록(되살리기용) — 휴대폰 관리자 '기록 고치기' */
+  H.adminRecords = async function (p) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const all = docs(await db.collection('records').where('month', '==', p.month).where('no', '==', String(p.no)).get());
+    const rec = (d) => ({ row: d.id, at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at), type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || '') });
+    const records = all.filter((d) => !d.del).map(rec).sort((a, b) => b.at - a.at);
+    const deleted = all.filter((d) => d.del).map((d) => Object.assign(rec(d), { log: d.id, by: d.delBy || '', when: d.delAt ? stamp(d.delAt) : '', full: true })).sort((a, b) => b.at - a.at);
+    return { ok: true, records: records, deleted: deleted, places: await placeChoices() };
+  };
+
+  async function writeLog(op, e, type, wd, before, after, place, rid) {
+    const id = 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    await db.doc('logs/' + id).set({ when: Date.now(), by: myName(), op: op, no: String(e.no), name: e.name || '', type: type, wd: wd, before: before || null, after: after || null, place: place || '', bak: '', rid: rid || '', row: 0 });
+    mirror('logs', [id]);
+  }
+
+  /** 기록 고치기: add / edit / delete / restore. row는 DB 기록 번호 */
+  H.adminEdit = async function (d) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const now = Date.now(), st = stamp(now);
+    if (d.op === 'add') {
+      const e = await getDoc('staff/' + String(d.no));
+      if (!e) return { ok: false, error: '직원을 찾지 못했어요' };
+      if (d.type !== '출근' && d.type !== '퇴근') return { ok: false, error: '출근/퇴근을 골라 주세요' };
+      let t = kst(d.wd, d.time);
+      if (isNaN(t)) return { ok: false, error: '날짜와 시각을 확인해 주세요' };
+      if (d.nextDay) t += 24 * 3600 * 1000;
+      if (t > now) return { ok: false, error: '앞으로의 시각은 넣을 수 없어요' };
+      if ((await placeChoices()).indexOf(String(d.place || '')) < 0) return { ok: false, error: '장소를 골라 주세요' };
+      const id = newId();
+      await db.doc('records/' + id).set({ no: String(e.no), name: e.name, at: t, wd: d.wd, month: d.wd.slice(0, 7), type: d.type, place: String(d.place), addr: '', lat: null, lng: null, acc: null,
+        how: '관리자 추가(' + myName() + ' ' + st + ')', dev: '', excl: false, fix: false, sheet: false, upd: now });
+      mirror('records', [id]);
+      await writeLog('추가', e, d.type, d.wd, null, t, d.place, id);
+      await recomputeLatest(e.no);
+      return { ok: true, id: id };
+    }
+    const id = String(d.row || d.log || '');
+    const r = id ? await getDoc('records/' + id) : null;
+    if (!r) return { ok: false, error: '기록을 찾지 못했어요' };
+    const e = { no: r.no, name: r.name };
+    if (d.op === 'restore') {
+      if (!r.del) return { ok: false, error: '이미 되살린 기록이에요' };
+      await db.doc('records/' + id).update({ del: false, sheet: false, how: String(r.how || '') + ' → 관리자 되살림(' + myName() + ' ' + st + ')', upd: now });
+      mirror('records', [id]);
+      await writeLog('되살림', e, r.type, r.wd, null, r.at, r.place, id);
+      await recomputeLatest(r.no);
+      return { ok: true };
+    }
+    if (r.del) return { ok: false, error: '이미 지운 기록이에요' };
+    if (d.expectAt && Number(d.expectAt) !== r.at) return { ok: false, error: '기록이 바뀌었어요. 다시 열어 주세요' };
+    if (d.op === 'delete') {
+      await db.doc('records/' + id).update({ del: true, delBy: myName(), delAt: now, sheet: false, upd: now });
+      mirror('records', [id]);
+      await writeLog('삭제', e, r.type, r.wd, r.at, null, r.place, id);
+      await recomputeLatest(r.no);
+      return { ok: true };
+    }
+    if (d.op === 'edit') {
+      let t = kst(r.wd, d.time);
+      if (isNaN(t)) return { ok: false, error: '시각을 확인해 주세요' };
+      if (d.nextDay) t += 24 * 3600 * 1000;
+      if (t > now) return { ok: false, error: '앞으로의 시각은 넣을 수 없어요' };
+      if (hm(t) === hm(r.at) && ymd(t) === ymd(r.at)) t = r.at;   // 분까지 같으면 그대로
+      let place = r.place || '';
+      if (d.place) { if ((await placeChoices()).indexOf(String(d.place)) < 0) return { ok: false, error: '장소를 확인해 주세요' }; place = String(d.place); }
+      let type = r.type;
+      if (d.type) { if (d.type !== '출근' && d.type !== '퇴근') return { ok: false, error: '출근/퇴근을 확인해 주세요' }; type = d.type; }
+      const tc = t !== r.at, pc = place !== (r.place || ''), yc = type !== r.type;
+      if (!tc && !pc && !yc) return { ok: false, error: '바뀐 내용이 없어요' };
+      const what = [], parts = [];
+      if (tc) { what.push('원래 ' + stamp(r.at)); parts.push('시각'); }
+      if (pc) { what.push('장소 ' + (r.place || '없음') + '→' + place); parts.push('장소'); }
+      if (yc) { what.push('구분 ' + r.type + '→' + type); parts.push('구분'); }
+      await db.doc('records/' + id).update({ at: t, place: place, type: type, how: String(r.how || '') + ' → 관리자 수정(' + myName() + ' ' + st + ', ' + what.join(', ') + ')', sheet: false, upd: now });
+      mirror('records', [id]);
+      await writeLog(parts.length === 1 && tc ? '수정' : parts.join('·') + ' 수정', e, yc ? r.type + '→' + type : type, r.wd, r.at, t, pc ? (r.place || '') + '→' + place : place, id);
+      await recomputeLatest(r.no);
+      return { ok: true };
+    }
+    return { ok: false, error: 'bad op' };
+  };
+
+  /** 한 달 치 전 직원 기록 (휴대폰 '빠진 기록 모아 보기') */
+  H.adminMonthAll = async function (p) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const by = {};
+    (await monthRecs(p.month)).forEach((d) => {
+      const a = (by[d.no] = by[d.no] || {});
+      (a[d.wd] = a[d.wd] || []).push({ type: d.type, at: d.at, time: hm(d.at), day: ymd(d.at), place: d.place || '', fix: !!d.fix });
+    });
+    const staff = (await allStaff()).filter((e) => by[String(e.no)]).map((e) => ({ no: e.no, name: e.name, status: e.status,
+      days: Object.keys(by[String(e.no)]).sort().map((k) => ({ date: k, items: by[String(e.no)][k].sort((a, b) => a.at - b.at) })) }));
+    return { ok: true, month: p.month, staff: staff };
+  };
+
+  /** PC 관리 화면: 한 달 치 전 직원 기록 */
+  H.adminMonthRecs = async function (p) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const recs = (await monthRecs(p.month)).map((d) => ({ row: d.id, no: String(d.no), name: d.name || '', at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at),
+      type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), fix: !!d.fix }));
+    const staff = (await allStaff()).map((e) => ({ no: String(e.no), name: e.name, dept: e.dept, status: e.status }));
+    return { ok: true, month: p.month, recs: recs, staff: staff, places: await placeChoices(), me: myName() };
+  };
+
+  /** PC: 그 달(근무일 기준) 수정 이력. 지운 기록 중 아직 되살리지 않은 것은 can=true (log에 기록 번호) */
+  H.adminLog = async function (p) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const from = p.month + '-01', to = p.month + '-31';
+    const logs = docs(await db.collection('logs').where('wd', '>=', from).where('wd', '<=', to).get());
+    const delRecs = docs(await db.collection('records').where('month', '==', p.month).where('del', '==', true).get());
+    const byKey = {};
+    delRecs.forEach((d) => { byKey[d.id] = d; byKey[d.no + '|' + Math.round(d.at / 1000)] = d; });
+    const used = {};
+    const out = logs.map((L) => {
+      let can = false, rid = '';
+      if (L.op === '삭제') {
+        const d = (L.rid && byKey[L.rid]) || byKey[String(L.no) + '|' + Math.round((L.before || 0) / 1000)];
+        if (d && !used[d.id]) { can = true; rid = d.id; used[d.id] = true; }
+      }
+      return { log: rid || L.id, at: L.when || 0, when: L.when ? stamp(L.when) : '', by: L.by || '', op: L.op || '', no: String(L.no), name: L.name || '', type: L.type || '',
+               wd: L.wd || '', before: L.before ? stamp(L.before) : '', after: L.after ? stamp(L.after) : '', place: L.place || '', can: can };
+    });
+    out.sort((x, y) => (y.at - x.at));
+    return { ok: true, month: p.month, logs: out };
+  };
+
+  /** 근태기록표: '근태기록' 탭과 같은 모양을 DB 기록으로 직접 계산 (16·17시대 퇴근은 18시대로 인정, 보정제외는 그대로) */
+  H.adminSheet = async function (p) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const ym = p.month, place = p.place || '전체', [y, m] = ym.split('-').map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate(), DAYS = 31;
+    const pl = await placeChoices(), placesList = ['전체'].concat(pl);
+    const st = (await allStaff()).filter((e) => e.status !== '퇴사');
+    const recs = (await monthRecs(ym)).filter((d) => place === '전체' || d.place === place);
+    const by = {};
+    recs.forEach((d) => {
+      let t = d.at;
+      const h = kParts(t).h;
+      if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl) t += (18 - h) * 3600 * 1000;
+      ((by[d.no] = by[d.no] || {})[d.wd] = by[d.no][d.wd] || []).push(t);
+    });
+    const blank = () => new Array(DAYS).fill('');
+    const rows = [], bg = [], fw = [], al = [], merges = [];
+    const push = (r, b, f, a) => { rows.push(r); bg.push(b || new Array(DAYS).fill('#ffffff')); fw.push(f || new Array(DAYS).fill('normal')); al.push(a || new Array(DAYS).fill('center')); };
+    const r0 = blank(); r0[0] = '근태기록표'; push(r0, null, new Array(DAYS).fill('bold')); merges.push([0, 0, 1, DAYS]);
+    push(blank());
+    const r2 = blank(), b2 = new Array(DAYS).fill('#ffffff'), f2 = new Array(DAYS).fill('normal');
+    r2[0] = '출근 월'; r2[2] = ym; r2[6] = '장소'; r2[8] = place;
+    r2[12] = y + '/' + pad(m) + '/01 ~ ' + pad(m) + '/' + pad(last) + '   ( ' + (place === '전체' ? 'krf센터' : place) + ' )';
+    [2, 3, 4, 8, 9, 10].forEach((c) => { b2[c] = '#fff2cc'; }); [0, 2, 6, 8].forEach((c) => { f2[c] = 'bold'; });
+    push(r2, b2, f2); merges.push([2, 0, 1, 2], [2, 2, 1, 3], [2, 6, 1, 2], [2, 8, 1, 3], [2, 12, 1, DAYS - 12]);
+    const r3 = blank(); r3[0] = '※ 16:00~17:59 퇴근은 18시대 근무 인정 시각으로 표시합니다 (16시대 +2시간, 17시대 +1시간 / 원본은 기록 그대로). 보정하지 않을 기록은 \'기록\' 탭의 \'보정제외\'를 체크하세요.';
+    push(r3, null, null, new Array(DAYS).fill('left')); merges.push([3, 0, 1, DAYS]);
+    st.forEach((e) => {
+      const day = blank(), info = blank(), times = blank(), k = rows.length;
+      for (let d = 1; d <= last; d++) {
+        day[d - 1] = String(d);
+        const list = ((by[String(e.no)] || {})[ym + '-' + pad(d)] || []).sort((a, b) => a - b);
+        times[d - 1] = list.map(hm).join('\n');
+      }
+      info[0] = '사원번호'; info[2] = String(e.no); info[8] = '성명'; info[10] = e.name; info[18] = '부서'; info[20] = e.dept || '';
+      push(day, new Array(DAYS).fill('#f3f3f3'), new Array(DAYS).fill('bold'));
+      push(info, new Array(DAYS).fill('#dbe5f1'));
+      push(times);
+      merges.push([k + 1, 0, 1, 2], [k + 1, 2, 1, 6], [k + 1, 8, 1, 2], [k + 1, 10, 1, 8], [k + 1, 18, 1, 2], [k + 1, 20, 1, DAYS - 20]);
+    });
+    return { ok: true, month: ym, place: place, places: placesList, fixed: false, fromDb: true, rows: rows, bg: bg, fw: fw, al: al, merges: merges, widths: new Array(DAYS).fill(44), hidden: [] };
+  };
+
+  /* ───────── 바깥에서 쓰는 것 ───────── */
+  // 서버를 꼭 거쳐야 하는 것: superJoin, pcStart, pcApprove, pushSub, superLeave, fbBind, fbNotify, fbGeocode
+  const DB_ACTIONS = Object.keys(H);
+  window.KRFDB = {
+    /** 시작 (화면을 열 때 한 번). serverCall(action, payload) = 예전 서버 요청 함수 */
+    init: function (devId, serverCall) {
+      deviceId = devId; server = serverCall;
+      if (!readyP) readyP = timeout(start(), 12000, 'start').then(() => true, (e) => { broken = true; console.warn('[DB] 시작 실패 → 서버로', e); return false; });
+      return readyP;
+    },
+    ready: () => !!(readyP && db && dv && !broken),
+    can: (action) => !!(db && dv && !broken && DB_ACTIONS.indexOf(action) >= 0),
+    /** 기기 정보를 서버에서 다시 받아 옴 (관리자 등록·PC 연결 뒤) */
+    rebind: async function () { if (db) await refreshDevice(true); },
+    call: async function (action, payload) {
+      try {
+        return await timeout(H[action](payload || {}), 15000, action);
+      } catch (e) {
+        if (/resource-exhausted|quota/i.test(String(e && (e.code || e.message)))) broken = true;   // 오늘 무료 한도를 다 씀 → 서버로
+        throw e;
+      }
+    },
+    uid: () => uid,
+    who: () => ({ dv: dv, bind: bind, staff: staffMe })
+  };
+})();
+
+</script>
+<script>
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 13:41';
+  const VER = '2026-11-14 14:46';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -258,9 +816,26 @@
     deviceId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
     store.set('deviceId', deviceId);
   }
-  async function api(action, payload) {
+  async function serverApi(action, payload) {
     const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: action, deviceId: deviceId }, payload)) });
     return res.json();
+  }
+  // ── DB(파이어베이스) 먼저, 안 되면 예전 서버로 ──
+  // 주소 끝에 ?db=0 을 붙이면 DB를 쓰지 않음 (문제 생길 때 확인용)
+  const DB_ON = !!window.KRFDB && !/[?&]db=0\b/.test(location.search);
+  const dbReady = DB_ON ? KRFDB.init(deviceId, serverApi) : Promise.resolve(false);
+  const SERVER_ONLY_ROW = (a, p) => a === 'adminEdit' && /^\d+$/.test(String((p && (p.row || p.log)) || ''));   // 예전 화면에 남은 시트 줄 번호
+  async function api(action, payload) {
+    if (await dbReady && KRFDB.can(action) && !SERVER_ONLY_ROW(action, payload)) {
+      try { const r = await KRFDB.call(action, payload); if (r) return r; }
+      catch (e) { console.warn('[DB] ' + action + ' → 서버로', e); }
+    }
+    const r = await serverApi(action, payload);
+    // 관리자 등록·해제, PC 연결이 끝나면 DB 쪽 기기 정보도 새로 받음
+    if (r && r.ok && DB_ON && (action === 'superJoin' || action === 'superLeave' || (action === 'pcStart' && r.done))) {
+      if (await dbReady) await KRFDB.rebind().catch(() => {});
+    }
+    return r;
   }
   const call = async (action, payload) => { try { return await api(action, payload); } catch (e) { return null; } };
   const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
@@ -407,7 +982,7 @@
   function dropRec(rec) {
     enqueue({ op: 'delete', row: rec.row, expectAt: rec.at, no: rec.no }, rec.name + ' ' + rec.wd.slice(5) + ' ' + rec.type + ' 지우기');
     D.recs = D.recs.filter((r) => r !== rec);
-    D.recs.forEach((r) => { if (rec.row && r.row > rec.row) r.row--; });
+    if (typeof rec.row === 'number') D.recs.forEach((r) => { if (typeof r.row === 'number' && r.row > rec.row) r.row--; });   // 시트 줄 번호일 때만
     sel.delete(rec.id);
     cache[ym] = D;
   }
@@ -708,22 +1283,27 @@
   }
 
   // ── 근태기록표: 구글 시트의 '근태기록' 탭이 계산한 표를 그대로 ──
+  // 근태기록표는 달 + 장소(시트 I3 칸과 같음)마다 따로 기억
   const SH = {};
-  let shSeq = 0;
+  let shSeq = 0, shPlace = store.get('shPlace') || '전체', shPlaces = ['전체'];
+  const shKey = () => ym + '|' + shPlace;
   async function loadSheet() {
-    const seq = ++shSeq, m = ym;
+    const seq = ++shSeq, k = shKey();
     if (view === 'sheet') renderSheet();
-    const d = await call('adminSheet', { month: m });
+    const d = await call('adminSheet', { month: ym, place: shPlace });
     if (seq !== shSeq) return;
-    SH[m] = (d && d.ok) ? d : (SH[m] && SH[m] !== 'err' ? SH[m] : 'err');
+    if (d && d.ok && d.places) shPlaces = d.places;
+    if (d && !d.ok && d.error === '장소를 확인해 주세요' && shPlace !== '전체') { shPlace = '전체'; store.set('shPlace', shPlace); loadSheet(); return; }   // 지워진 장소를 고르고 있었으면 전체로
+    SH[k] = (d && d.ok) ? d : (SH[k] && SH[k] !== 'err' ? SH[k] : 'err');
     if (view === 'sheet') renderSheet();
   }
   function renderSheet() {
-    $('filters').innerHTML = '';
-    const d = SH[ym];
+    const list = shPlaces.indexOf(shPlace) < 0 ? shPlaces.concat([shPlace]) : shPlaces;
+    $('filters').innerHTML = '<label class="sub2">장소</label><select id="shPlace">' + list.map((p) => opt(p, shPlace)).join('') + '</select>';
+    const d = SH[shKey()];
     if (d === undefined) { $('view').innerHTML = '<div class="empty">근태기록표를 계산하는 중… (몇 초 걸려요)</div>'; return; }
     if (d === 'err') { $('view').innerHTML = '<div class="empty">불러오지 못했어요. [새로 고침]을 눌러 주세요</div>'; return; }
-    $('view').innerHTML = '<div class="pad"><div class="hint noprint">' + (d.fixed ? '이 달은 확정해서 보관해 둔 표예요.' : "구글 시트 '근태기록' 탭이 계산한 표를 그대로 보여 줘요. 기록을 고친 뒤에는 [새로 고침]을 눌러 주세요.") + '</div>' +
+    $('view').innerHTML = '<div class="pad"><div class="hint noprint">' + (d.fixed ? '이 달은 확정해서 보관해 둔 표예요.' : d.fromDb ? "구글 시트 '근태기록' 탭과 같은 방식으로 기록에서 바로 계산한 표예요." : "구글 시트 '근태기록' 탭이 계산한 표를 그대로 보여 줘요. 기록을 고친 뒤에는 [새로 고침]을 눌러 주세요.") + '</div>' +
       sheetTable(d) + '</div>';
   }
   // 시트 모양 그대로: 병합 칸은 rowspan/colspan, 열 너비·배경색·굵기·정렬도 시트에서 받은 대로
@@ -883,7 +1463,7 @@
       if (act === 'now') { ym = ymStr(new Date()); closeDrawer(); load(); loadFor(view); return; }
       if (act === 'reload') {
         if (busy || q.length) { alert('저장이 끝난 뒤에 눌러 주세요'); return; }
-        delete cache[ym]; delete LC[ym]; delete SH[ym]; load();
+        delete cache[ym]; delete LC[ym]; Object.keys(SH).forEach((k) => { if (k.indexOf(ym + '|') === 0) delete SH[k]; }); load();
         if (view === 'today' || view === 'staff') { T = null; render(); }
         if (view === 'place') { PL = null; render(); }
         loadFor(view);
@@ -917,7 +1497,7 @@
       if (act === 'bulkDel') {
         const recs = Array.from(sel).map(recById).filter((r) => r);
         if (!recs.length || !confirm(recs.length + '건의 기록을 지울까요?\n(지운 기록은 수정 이력에서 하나씩 되살릴 수 있어요)')) return;
-        recs.sort((x, y) => y.row - x.row).forEach(dropRec);   // 아래 줄부터 지워야 줄 번호가 안 밀림
+        recs.sort((x, y) => (Number(y.row) || 0) - (Number(x.row) || 0)).forEach(dropRec);   // 아래 줄부터 지워야 줄 번호가 안 밀림
         renderList(); toast(recs.length + '건을 지웠어요');
         return;
       }
@@ -933,7 +1513,7 @@
       if (act === 'restore') {
         if (!confirm(b.dataset.desc + ' 기록을 되살릴까요?')) return;
         b.disabled = true; needReload = true;
-        enqueue({ op: 'restore', log: Number(b.dataset.log) }, b.dataset.desc + ' 되살리기');
+        enqueue({ op: 'restore', log: /^\d+$/.test(b.dataset.log) ? Number(b.dataset.log) : b.dataset.log }, b.dataset.desc + ' 되살리기');
         return;
       }
       if (act === 'staffAdd') {
@@ -993,6 +1573,7 @@
   document.addEventListener('change', async (ev) => {
     const t = ev.target;
     if (t.id === 'staffAll') { staffAll = t.checked; renderStaff(); return; }
+    if (t.id === 'shPlace') { shPlace = t.value; store.set('shPlace', shPlace); renderSheet(); loadSheet(); return; }
     if (t.id === 'cardSel') { cardNo = t.value; store.set('cardNo', cardNo); renderCard(); return; }
     if (t.matches('[data-selall]')) { sel.clear(); if (t.checked) listRows().forEach((r) => sel.add(r.id)); renderList(); return; }
     if (t.matches('[data-sel]')) { const id = t.closest('[data-id]').dataset.id; if (t.checked) sel.add(id); else sel.delete(id); bulkBar(); return; }
