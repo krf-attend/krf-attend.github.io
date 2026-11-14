@@ -141,7 +141,7 @@
   #logoutBtn.hidden { display:none; }
   #adminBtn { margin-top:14px; margin-left:6px; font-size:22px; font-weight:700; padding:12px 18px; border:2px solid #8e44ad; border-radius:14px; background:#fff; color:#8e44ad; }
   #admin { position:fixed; inset:0; z-index:10; background:var(--bg); display:flex; flex-direction:column; align-items:center; padding:14px 12px; }
-  #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; }
+  #adminBody { width:100%; max-width:440px; overflow-y:auto; flex:1; text-align:left; overflow-anchor:none; }
   .asec { font-size:22px; font-weight:800; margin:14px 4px 8px; color:#8e44ad; }
   .acard { background:#fff; border-radius:14px; padding:12px; margin-bottom:8px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
   .shead { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; cursor:pointer; }
@@ -231,7 +231,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:30</div>
+    <div id="ver">화면 버전 2026-11-14 11:50</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1300,12 +1300,15 @@
     if (xb) {
       openNo = String(openNo) === xb.dataset.no ? null : xb.dataset.no; renderStaff();
       // 펼친 칸이 화면 밖으로 넘치면 보이도록 조금만 올림
-      const oc = openNo !== null && document.querySelector('.scard.open');
-      if (oc) {   // 아래에 자리가 있으면 그대로, 모자라면 모자란 만큼만 올림
+      // 이름 줄이 위로 잘리면 내리고, 아래가 넘치면 모자란 만큼만 올림 (이름 줄은 항상 보이게)
+      const fit = () => {
+        const oc = openNo !== null && document.querySelector('.scard.open');
+        if (!oc) return;
         const bx = $('adminBody'), cr = oc.getBoundingClientRect(), br = bx.getBoundingClientRect();
-        const over = Math.min(cr.bottom + 8 - br.bottom, cr.top - 6 - br.top);
-        if (over > 0) bx.scrollBy({ top: over, behavior: 'smooth' });
-      }
+        const up = cr.top - 6 - br.top, over = Math.min(cr.bottom + 8 - br.bottom, up);
+        if (up < 0) bx.scrollTop += up; else if (over > 0) bx.scrollTop += over;
+      };
+      fit(); requestAnimationFrame(fit); setTimeout(fit, 350);
       return;
     }
     const fb = ev.target.closest('button[data-f]');
