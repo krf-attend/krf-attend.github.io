@@ -230,7 +230,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 10:00</div>
+    <div id="ver">화면 버전 2026-11-14 10:20</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -979,6 +979,7 @@
   async function loadAdmin() {
     const body = $('adminBody'), seq = ++admSeq;
     admView = 'list';
+    edFlush();   // 지난번에 저장하지 못한 수정이 있으면 지금 보냄
     let c = null;
     try { c = JSON.parse(store.get('admCache') || 'null'); } catch (e) {}
     if (c) drawAdmin(c, true);
@@ -1113,6 +1114,7 @@
       '<span class="aname">' + esc(nm) + '</span><span></span></div>' +
       '<div class="arow" style="justify-content:center"><button class="abtn" data-ed="prev">◀</button><span class="aname" style="margin:0 10px">' + y + '년 ' + m + '월</span>' +
       '<button class="abtn" data-ed="next"' + (edYM >= ymStr(new Date()) ? ' disabled' : '') + '>▶</button></div>' +
+      '<div id="edSync"></div>' +
       '<div class="acard"><button class="abtn go" data-ed="addform">+ 빠진 기록 넣기</button><div id="edAdd"></div></div>' +
       '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>' +
       '<div id="edDel"></div>';
@@ -1120,10 +1122,12 @@
     try { c = JSON.parse(store.get(key) || 'null'); } catch (e) {}
     body.classList.remove('stale');
     if (c) { body.insertAdjacentHTML('afterbegin', staleNote('🔄 최신 내용으로 바꾸는 중… (잠시 버튼이 막혀요)')); fillRecords(c); body.classList.add('stale'); }
+    if (edQ().length) await edWait(8000);   // 아직 저장 중인 수정이 있으면 먼저 저장하고 받아 옴
     let d;
     try { d = await api('adminRecords', { deviceId: deviceId, no: no, month: edYM }); } catch (e) { d = null; }
-    if (d && d.ok) store.set(key, JSON.stringify(d));
+    if (d && d.ok && !edQ().length) store.set(key, JSON.stringify(d));
     if (seq !== admSeq || admView !== 'rec') return;
+    if (d && d.ok && edQ().length) { setStale(false); edNote(); return; }   // 그사이 또 고쳤으면 화면(고친 내용)을 그대로 둠
     if (!d || !d.ok) {
       if (c) setStale(true, '⚠ 새로 고치지 못했어요. 목록으로 갔다가 다시 열어 주세요');
       else if ($('edList')) $('edList').innerHTML = '<div class="aempty">불러오지 못했어요</div>';
@@ -1131,11 +1135,13 @@
     }
     setStale(false);
     fillRecords(d);
+    edNote();
   }
   function fillRecords(d) {
     const list = $('edList');
     if (!list) return;
     edPlaces = d.places || [];
+    edData = d;
     // 이 달에 지운 기록 → 되살리기
     const del = d.deleted || [];
     $('edDel').innerHTML = !del.length ? '' : '<div class="asec" style="color:#777">🗑 지운 기록 (' + del.length + ')</div><div class="acard">' + del.map((r) => {
@@ -1151,19 +1157,113 @@
       return '<div class="erec" data-row="' + r.row + '" data-at="' + r.at + '"><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' +
         '<span class="' + (r.type === '출근' ? 'in' : 'out') + '" style="font-weight:800;color:' + (r.type === '출근' ? 'var(--ok)' : '#b35a00') + '">' + esc(r.type) + '</span> ' +
         (nd ? '다음날 ' : '') + esc(r.time) + ' <span class="asub">' + esc(r.place) + '</span>' +
+        (r.pending ? ' <span class="atag wait">⏳ 저장 중</span>' : '') +
         (r.nogps ? ' <span class="atag wait">📍 위치 없음</span>' : '') +
         (/관리자/.test(r.how) ? '<small>' + esc(r.how) + '</small>' : '') +
         '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '" data-type="' + esc(r.type) + '">고치기</button>' +
         '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
     }).join('');
   }
-  async function edCall(payload) {
+  // ── 기록 수정: 고치면 화면에 바로 반영하고, 서버 저장은 뒤에서 순서대로. 저장을 확인 못 한 것은 휴대폰에 남겨 다시 보냄 ──
+  let edData = null, edBusy = false, edTimer = null;
+  const edQ = () => { try { const a = JSON.parse(store.get('edQueue') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const edQSave = (a) => { store.set('edQueue', JSON.stringify(a)); };
+  const edWait = async (ms) => { edFlush(); const t0 = Date.now(); while (edQ().length && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 200)); };
+  function edNote() {
+    const el = $('edSync');
+    if (!el) return;
+    const n = edQ().length;
+    el.innerHTML = n ? '<div class="astale">⏳ 저장 중 ' + n + '건… 계속 고치셔도 돼요</div>' : '';
+  }
+  async function edFlush() {
+    if (edBusy) return;
+    edBusy = true;
+    let did = 0;
+    try {
+      for (;;) {
+        const q = edQ();
+        if (!q.length) break;
+        const it = q[0];
+        let r = null;
+        try { r = await api('adminEdit', Object.assign({ deviceId: deviceId }, it.p)); } catch (e) { r = null; }
+        if (!r) break;                                    // 전파가 안 됨: 그대로 두고 조금 뒤 다시
+        edQSave(edQ().filter((x) => x.id !== it.id));
+        did++;
+        edNote();
+        if (!r.ok) alert('저장하지 못했어요\n' + it.desc + '\n(' + (r.error || '처리하지 못했어요') + ')');
+      }
+    } finally {
+      edBusy = false;
+      clearTimeout(edTimer);
+      edNote();
+      if (edQ().length) edTimer = setTimeout(edFlush, 15000);
+      else if (did) edRefresh();
+    }
+  }
+  // 다 저장했으면 서버 내용으로 조용히 새로 고침 (고치는 창이 열려 있으면 화면은 건드리지 않음)
+  async function edRefresh() {
+    if (admView !== 'rec' || edNo === null) return;
+    const no = edNo, ym = edYM;
+    let d;
+    try { d = await api('adminRecords', { deviceId: deviceId, no: no, month: ym }); } catch (e) { d = null; }
+    if (!d || !d.ok || edQ().length) return;
+    store.set('recCache:' + no + ':' + ym, JSON.stringify(d));
+    if (admView !== 'rec' || edNo !== no || edYM !== ym) return;
+    if ($('adminBody').querySelector('.eform')) return;
+    fillRecords(d);
+  }
+  // 예전 방식(서버 답을 기다림): 화면에 반영할 수 없는 경우에만 씀
+  async function edCallOnline(payload) {
     let r;
     try { r = await api('adminEdit', Object.assign({ deviceId: deviceId }, payload)); } catch (e) { r = null; }
     if (!r || !r.ok) { alert((r && r.error) || '처리하지 못했어요'); return false; }
     store.del('recCache:' + edNo + ':' + edYM);   // 방금 고친 달은 옛 내용을 보여 주지 않음
     openRecords(edNo, edName);
     return true;
+  }
+  function edCall(payload) {
+    const d = edData;
+    if (!d || !Array.isArray(d.records)) return edCallOnline(payload);
+    const p = Object.assign({ no: edNo }, payload);
+    const kstMs = (wd, hm, nd) => Date.parse(wd + 'T' + hm + ':00+09:00') + (nd ? 86400000 : 0);
+    const dayOf = (ms) => new Date(ms + 9 * 3600000).toISOString().slice(0, 10);
+    let desc = '';
+    if (p.op === 'add') {
+      const at = kstMs(p.wd, p.time, p.nextDay);
+      if (!(at <= Date.now())) { alert('앞으로의 시각은 넣을 수 없어요'); return; }
+      desc = p.wd.slice(5) + ' ' + p.type + ' ' + p.time + ' 넣기';
+      if (p.wd.slice(0, 7) === edYM) d.records.push({ row: 0, at: at, wd: p.wd, day: dayOf(at), time: p.time, type: p.type, place: p.place, how: '관리자 추가', nogps: false, pending: true });
+    } else if (p.op === 'edit') {
+      const r = d.records.find((x) => String(x.at) === String(p.expectAt));
+      if (!r) return edCallOnline(payload);
+      let at = r.at;
+      if (p.time !== r.time || !!p.nextDay !== (r.day !== r.wd)) at = kstMs(r.wd, p.time, p.nextDay);
+      if (!(at <= Date.now())) { alert('앞으로의 시각은 넣을 수 없어요'); return; }
+      const type = p.type || r.type, place = p.place || r.place;
+      if (at === r.at && type === r.type && place === r.place) { alert('바뀐 내용이 없어요'); return; }
+      desc = r.wd.slice(5) + ' ' + r.type + ' ' + r.time + ' 고치기';
+      r.at = at; r.day = dayOf(at); r.time = p.time; r.type = type; r.place = place; r.pending = true;
+    } else if (p.op === 'delete') {
+      const i = d.records.findIndex((x) => String(x.at) === String(p.expectAt));
+      if (i < 0) return edCallOnline(payload);
+      desc = d.records[i].wd.slice(5) + ' ' + d.records[i].type + ' ' + d.records[i].time + ' 지우기';
+      d.records.splice(i, 1);
+    } else if (p.op === 'restore') {
+      const i = (d.deleted || []).findIndex((x) => String(x.log) === String(p.log));
+      if (i < 0) return edCallOnline(payload);
+      const x = d.deleted.splice(i, 1)[0];
+      desc = x.wd.slice(5) + ' ' + x.type + ' ' + x.time + ' 되살리기';
+      d.records.push({ row: 0, at: x.at, wd: x.wd, day: x.day, time: x.time, type: x.type, place: x.place, how: '관리자 되살림', nogps: false, pending: true });
+    } else return edCallOnline(payload);
+    d.records.sort((x, y) => y.at - x.at);
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    edQSave(edQ().concat([{ id: id, p: p, desc: edName + ' ' + desc }]));
+    if (!edQ().some((x) => x.id === id)) return edCallOnline(payload);   // 휴대폰에 저장이 안 되면 예전 방식
+    store.set('recCache:' + edNo + ':' + edYM, JSON.stringify(d));
+    if ($('edAdd')) $('edAdd').innerHTML = '';
+    fillRecords(d);
+    edNote();
+    edFlush();
   }
   $('adminBody').addEventListener('click', async (ev) => {
     const xb = ev.target.closest('[data-x="open"]');   // 직원 카드 펼치기/접기 (한 번에 하나만)
