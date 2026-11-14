@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 19:25</div>
+    <div id="ver">화면 버전 2026-11-14 20:34</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -563,7 +563,7 @@
     const pending = st.filter((e) => e.dev && !e.ok && e.status !== '퇴사').map((e) => ({ no: e.no, name: e.name, dept: e.dept, req: e.req ? display(e.req) : '' }));
     const workingList = [];
     st.forEach((e) => { const r = latest[String(e.no)]; if (working(r, now)) workingList.push({ name: e.name, time: hm(r.at), place: r.place || '', nogps: !!r.nogps }); });
-    const staff = st.map((e) => ({ no: e.no, name: e.name, dept: e.dept, status: e.status, registered: !!e.dev, ok: !!e.ok, admin: !!e.admin, mate: !!e.mate, me: String(e.no) === String(dv.no) }));
+    const staff = st.map((e) => ({ no: e.no, name: e.name, dept: e.dept, shift: e.shift || '', status: e.status, registered: !!e.dev, ok: !!e.ok, admin: !!e.admin, mate: !!e.mate, me: String(e.no) === String(dv.no) }));
     return { ok: true, super: isSuper(), pending: pending, working: workingList, staff: staff };
   };
 
@@ -576,6 +576,10 @@
     else if (p.op === 'reject' || p.op === 'reset') { if (isMe) return { ok: false, error: '내 휴대폰은 여기서 초기화할 수 없어요' }; up.dev = ''; up.ok = false; up.req = null; }
     else if (p.op === 'admin') { if (!isSuper()) return { ok: false, error: '슈퍼관리자만 관리자를 정할 수 있어요' }; up.admin = p.value === '1' || p.value === true; }
     else if (p.op === 'mate') up.mate = p.value === '1' || p.value === true;
+    else if (p.op === 'shift') {   // 근무형태: 주간 / 야간 (출퇴근카드에서 원래 근무와 대타(연장)를 나눌 때 씀)
+      if (['주간', '야간', ''].indexOf(p.value) < 0) return { ok: false, error: 'bad value' };
+      up.shift = p.value;
+    }
     else if (p.op === 'status') {
       if (['재직', '휴직', '퇴사'].indexOf(p.value) < 0) return { ok: false, error: 'bad value' };
       if (isMe && p.value !== '재직') return { ok: false, error: '내 상태는 여기서 바꿀 수 없어요' };
@@ -604,7 +608,8 @@
         if (await liveRecCount(n)) return { ok: false, error: n + '번으로 남아 있는 출퇴근 기록이 있어서 쓸 수 없어요' };
         no = String(n);
       }
-      await db.doc('staff/' + no).set({ no: no, name: name, order: maxOrd + 1, dept: dept, status: '재직', dev: '', ok: false, admin: false, mate: false, req: null, upd: Date.now(), sheet: false });
+      const shift = ['주간', '야간'].indexOf(d.shift) >= 0 ? d.shift : '';
+      await db.doc('staff/' + no).set({ no: no, name: name, order: maxOrd + 1, dept: dept, shift: shift, status: '재직', dev: '', ok: false, admin: false, mate: false, req: null, upd: Date.now(), sheet: false });
       mirror('staff', [no]);
       return { ok: true, no: Number(no) };
     }
@@ -788,7 +793,7 @@
     if (!isAdmin()) return { ok: false, error: 'not admin' };
     const recs = (await monthRecs(p.month)).map((d) => ({ row: d.id, no: String(d.no), name: d.name || '', at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at),
       type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), fix: !!d.fix }));
-    const staff = (await allStaff()).map((e) => ({ no: String(e.no), name: e.name, dept: e.dept, status: e.status }));
+    const staff = (await allStaff()).map((e) => ({ no: String(e.no), name: e.name, dept: e.dept, shift: e.shift || '', status: e.status }));
     return { ok: true, month: p.month, recs: recs, staff: staff, places: await placeChoices(), me: myName() };
   };
 
@@ -822,13 +827,18 @@
     const pl = await placeChoices(), placesList = ['전체'].concat(pl);
     const st = (await allStaff()).filter((e) => e.status !== '퇴사');
     // 찍은 날짜 기준: 지난달 마지막 날 야간 근무의 이달 1일 아침 퇴근도 이달 1일 칸에 (그래서 지난달 기록도 받음)
-    const recs = (await monthRecs(ym)).concat(await monthRecs(prevMonth(ym))).filter((d) => ymd(d.at).slice(0, 7) === ym && (place === '전체' || d.place === place));
+    const all = (await monthRecs(ym)).concat(await monthRecs(prevMonth(ym)));
+    const recs = all.filter((d) => ymd(d.at).slice(0, 7) === ym && (place === '전체' || d.place === place));
+    // 퇴근하고 3시간 안에 다시 출근한 경우(대타로 이어서 근무)는 18시 인정을 하지 않음 → 그 퇴근들
+    const ins = {};
+    all.forEach((d) => { if (d.type === '출근') (ins[d.no] = ins[d.no] || []).push(d.at); });
+    const goesOn = (d) => (ins[d.no] || []).some((t) => t > d.at && t - d.at <= 3 * 3600 * 1000);
     // 직원별 · 찍은 날짜별 출근 시각들, 퇴근 시각들 (예전 근태기록표처럼 출근 줄과 퇴근 줄을 따로)
     const by = {};
     recs.forEach((d) => {
       let t = d.at;
       const h = kParts(t).h;
-      if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl) t += (18 - h) * 3600 * 1000;
+      if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl && !goesOn(d)) t += (18 - h) * 3600 * 1000;
       const day = ymd(d.at);   // 근무일이 아니라 찍은 날짜 칸에
       const c = ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || { i: [], o: [] });
       c[d.type === '출근' ? 'i' : 'o'].push(t);
