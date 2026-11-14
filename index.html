@@ -231,7 +231,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:20</div>
+    <div id="ver">화면 버전 2026-11-14 11:30</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1299,9 +1299,13 @@
     const xb = ev.target.closest('[data-x="open"]');   // 직원 카드 펼치기/접기 (한 번에 하나만)
     if (xb) {
       openNo = String(openNo) === xb.dataset.no ? null : xb.dataset.no; renderStaff();
-      // 펼친 칸이 화면 맨 위로 오게 해서 내용이 바로 보이도록
+      // 펼친 칸이 화면 밖으로 넘치면 보이도록 조금만 올림
       const oc = openNo !== null && document.querySelector('.scard.open');
-      if (oc) oc.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (oc) {   // 아래에 자리가 있으면 그대로, 모자라면 모자란 만큼만 올림
+        const bx = $('adminBody'), cr = oc.getBoundingClientRect(), br = bx.getBoundingClientRect();
+        const over = Math.min(cr.bottom + 8 - br.bottom, cr.top - 6 - br.top);
+        if (over > 0) bx.scrollBy({ top: over, behavior: 'smooth' });
+      }
       return;
     }
     const fb = ev.target.closest('button[data-f]');
