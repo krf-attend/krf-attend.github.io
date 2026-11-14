@@ -82,7 +82,8 @@
   .hrow .out { color:#b35a00; font-weight:800; }
   .hrow .dur { color:#555; font-size:18px; }
   .hrow .pl { color:#1f5fbf; font-size:18px; font-weight:700; }
-  #obNote { margin-top:10px; font-size:17px; font-weight:700; color:#8a6d00; background:#fff8db; border-radius:12px; padding:8px 12px; }
+  .pleg { font-size:13px; color:#666; margin:6px 4px 0; display:flex; flex-wrap:wrap; gap:2px 10px; }
+  .pleg i { display:inline-block; width:14px; height:4px; border-radius:2px; margin-right:4px; vertical-align:middle; }
   .mrow { font-size:19px; line-height:1.5; padding:8px 4px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:8px; }
   .mrow > span { flex:1; }
   .mrow .miss { color:#c0392b; font-weight:800; }
@@ -236,8 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="obNote" class="hidden"></div>
-    <div id="ver">화면 버전 2026-11-14 14:50</div>
+    <div id="ver">화면 버전 2026-11-14 15:10</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -657,22 +657,12 @@
         }
       }
     } finally {
-      flushing = false; obNote();
+      flushing = false;
       clearTimeout(flushTimer);
       if (outbox().length) flushTimer = setTimeout(flushOutbox, 20000);
       else if (pendingShown) { pendingShown = false; setTimeout(loadStatus, 800); }   // 다 보냈으면 서버 상태로 새로 고침
     }
   }
-
-  // 아직 서버에 못 보낸 출퇴근이 있으면 첫 화면에 계속 알려 줌 (누르면 바로 다시 보냄)
-  function obNote() {
-    const el = $('obNote'); if (!el) return;
-    const n = outbox().filter((x) => Date.now() - x.at > 15000).length;
-    el.classList.toggle('hidden', !n);
-    if (n) el.textContent = '📡 아직 못 보낸 기록 ' + n + '건 · 전파가 잡히면 자동으로 보내요 (누르면 지금 다시 보냄)';
-  }
-  if ($('obNote')) $('obNote').addEventListener('click', () => { flushOutbox(); });
-  setInterval(obNote, 10000); obNote();
 
   async function punch() {
     const btn = $('punch');
@@ -966,6 +956,7 @@
     if (!had || JSON.stringify(d.days) !== sig) drawHist(d);
     histWarm();
   }
+  const HIST_PAL = ['#1f5fbf', '#8e44ad', '#00897b', '#c2185b', '#6d4c41', '#f39c12'], histPC = {};
   function drawHist(d) {
     const [y, m] = histYM.split('-').map(Number);
     histDays = {};
@@ -975,6 +966,12 @@
       pairsOf(day).forEach((p) => { if (p.in && p.out) total += p.out.at - p.in.at; });
     });
     // 달력: 일~토 7칸, 칸마다 첫 출근(초록)과 마지막 퇴근(주황). 다음 날 퇴근은 실제 퇴근한 날 칸에 보여 줌
+    // 장소마다 밑줄 색을 정해 달력 칸에서 어디 출퇴근인지 보이게 함
+    const seen = {};
+    d.days.forEach((day) => day.items.forEach((it) => { if (it.place) seen[it.place] = 1; }));
+    Object.keys(seen).sort().forEach((p) => { if (!histPC[p]) histPC[p] = HIST_PAL[Object.keys(histPC).length % HIST_PAL.length]; });
+    const tmC = (it) => '<span' + (histPC[it.place] ? ' style="border-bottom:3px solid ' + histPC[it.place] + '"' : '') + '>' + tmS(it) + '</span>';
+    const pleg = !Object.keys(seen).length ? '' : '<div class="pleg">' + Object.keys(seen).sort().map((p) => '<span><i style="background:' + histPC[p] + '"></i>' + esc(p) + '</span>').join('') + '</div>';
     const cellOf = {};
     d.days.forEach((day) => day.items.forEach((it) => {
       const k = (it.day && it.day.slice(0, 7) === histYM) ? it.day : day.date;   // 다음 달로 넘어가는 퇴근만 근무일 칸에
@@ -991,14 +988,14 @@
       if (cell.length) {
         const prevOut = cell.filter((c) => c.it.type === '퇴근' && c.wd !== date);   // 전날 근무의 퇴근
         const ins = cell.filter((c) => c.it.type === '출근'), outs = cell.filter((c) => c.it.type === '퇴근' && c.wd === date);
-        if (prevOut.length) inner += '<div class="cout">' + tmS(prevOut[prevOut.length - 1].it) + '</div>';
-        if (ins.length) inner += '<div class="cin">' + tmS(ins[0].it) + '</div>';
-        if (outs.length) inner += '<div class="cout">' + tmS(outs[outs.length - 1].it) + '</div>';
+        if (prevOut.length) inner += '<div class="cout">' + tmC(prevOut[prevOut.length - 1].it) + '</div>';
+        if (ins.length) inner += '<div class="cin">' + tmC(ins[0].it) + '</div>';
+        if (outs.length) inner += '<div class="cout">' + tmC(outs[outs.length - 1].it) + '</div>';
         else if (ins.length && date !== todayStr() && !(day && day.items.some((it) => it.type === '퇴근'))) inner += '<div class="cmiss">퇴근?</div>';
       }
       html += '<div class="cday' + (day || cell.length ? ' has' : '') + (date === todayStr() ? ' today' : '') + '" data-d="' + date + '">' + inner + '</div>';
     }
-    html += '</div>' + (d.days.some((day) => day.items.some((it) => it.fix)) ? '<div style="font-size:13px;color:#888;margin:6px 4px 0">* 표시는 관리자가 보정한 시각이에요</div>' : '') + '<div class="hday" id="histDetail"></div>';
+    html += '</div>' + pleg + (d.days.some((day) => day.items.some((it) => it.fix)) ? '<div style="font-size:13px;color:#888;margin:6px 4px 0">* 표시는 관리자가 보정한 시각이에요</div>' : '') + '<div class="hday" id="histDetail"></div>';
     $('histList').innerHTML = html;
     document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d)));
     $('histSum').textContent = (histNo !== null ? histWho + '님 · ' : '') + '출근 ' + d.days.length + '일 · 총 ' + hm(total);
