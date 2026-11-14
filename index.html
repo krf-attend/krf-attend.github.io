@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 15:09</div>
+    <div id="ver">화면 버전 2026-11-14 15:18</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1474,7 +1474,18 @@
     const p = String(it.place || '').replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
     return tmS(it) + (p ? ' <span class="pl">' + p + '</span>' : '');
   }
-  function showDay(date) {
+  // 펼치거나 새로 연 칸이 화면 밖에 있으면 보이도록 '조금만' 움직임 (공통)
+  // 위쪽이 가려지면(고정된 머리 줄 포함) 내리고, 아래가 넘치면 모자란 만큼만 올림 — 단, 그 칸의 맨 윗줄은 항상 보이게
+  function reveal(box, el) {
+    if (!box || !el || !box.contains(el)) return;
+    const head = box.querySelector('.edHead'), br = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const top = br.top + (head && head !== el && !head.contains(el) ? head.getBoundingClientRect().height + 4 : 0) + 6;
+    const up = r.top - top, over = Math.min(r.bottom + 8 - br.bottom, up);
+    if (up < 0) box.scrollTop += up; else if (over > 0) box.scrollTop += over;
+  }
+  // 내용이 그려진 뒤에도 한 번 더 맞춤 (글꼴·높이가 늦게 정해지는 경우)
+  function revealSoon(box, el) { reveal(box, el); requestAnimationFrame(() => reveal(box, el)); setTimeout(() => reveal(box, el), 350); }
+  function showDay(date, byTap) {
     document.querySelectorAll('.cday.sel').forEach((e) => e.classList.remove('sel'));
     const cell = document.querySelector('.cday[data-d="' + date + '"]');
     if (cell) cell.classList.add('sel');
@@ -1523,6 +1534,7 @@
     $('histDetail').innerHTML = html;
     if ($('histFix')) $('histFix').addEventListener('click', () => histFixGo(date, emptyDay ? { wd: date, type: '출근', time: '09:00', nd: false } : null));
     document.querySelectorAll('.histAdd').forEach((b) => b.addEventListener('click', () => histFixGo(date, adds[Number(b.dataset.i)])));
+    if (byTap) revealSoon($('histList'), $('histDetail'));   // 날짜를 눌렀으면 아래 내용이 보이게
   }
   // 한 번 본 달은 기억해 두었다가 바로 보여 주고, 옆 달은 미리 받아 둠
   const histCache = {};
@@ -1617,7 +1629,7 @@
     }
     html += '</div>' + pleg + (d.days.some((day) => day.items.some((it) => it.fix)) ? '<div style="font-size:13px;color:#888;margin:6px 4px 0">* 표시는 관리자가 보정한 시각이에요</div>' : '') + '<div class="hday" id="histDetail"></div>';
     $('histList').innerHTML = html;
-    document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d)));
+    document.querySelectorAll('.cday').forEach((c) => c.addEventListener('click', () => showDay(c.dataset.d, true)));
     $('histSum').textContent = (histNo !== null ? histWho + '님 · ' : '') + '출근 ' + d.days.length + '일 · 총 ' + hm(total);
     const pick = (histPick && histPick.slice(0, 7) === histYM) ? histPick : histDays[todayStr()] ? todayStr() : (d.days.length ? d.days[0].date : (histYM === ymStr(new Date()) ? todayStr() : histYM + '-01'));
     showDay(pick);
@@ -1910,8 +1922,7 @@
     els.forEach((e) => e.classList.add('focus'));
     if (!els.length || edFocusScroll <= 0) return;
     edFocusScroll--;
-    const bx = $('adminBody');
-    bx.scrollTop += els[0].getBoundingClientRect().top - bx.getBoundingClientRect().top - 140;
+    revealSoon($('adminBody'), els[els.length - 1]); revealSoon($('adminBody'), els[0]);   // 그 날 기록이 모두(최소한 첫 줄은) 보이게
   }
   function fillRecords(d) {
     const list = $('edList');
@@ -2047,16 +2058,7 @@
     const xb = ev.target.closest('[data-x="open"]');   // 직원 카드 펼치기/접기 (한 번에 하나만)
     if (xb) {
       openNo = String(openNo) === xb.dataset.no ? null : xb.dataset.no; renderStaff();
-      // 펼친 칸이 화면 밖으로 넘치면 보이도록 조금만 올림
-      // 이름 줄이 위로 잘리면 내리고, 아래가 넘치면 모자란 만큼만 올림 (이름 줄은 항상 보이게)
-      const fit = () => {
-        const oc = openNo !== null && document.querySelector('.scard.open');
-        if (!oc) return;
-        const bx = $('adminBody'), cr = oc.getBoundingClientRect(), br = bx.getBoundingClientRect();
-        const up = cr.top - 6 - br.top, over = Math.min(cr.bottom + 8 - br.bottom, up);
-        if (up < 0) bx.scrollTop += up; else if (over > 0) bx.scrollTop += over;
-      };
-      fit(); requestAnimationFrame(fit); setTimeout(fit, 350);
+      if (openNo !== null) revealSoon($('adminBody'), document.querySelector('.scard.open'));   // 펼친 칸이 보이게
       return;
     }
     const fb = ev.target.closest('button[data-f]');
@@ -2104,11 +2106,16 @@
         return;
       }
       if (k === 'editform') {
-        rec.querySelector('.edSlot').innerHTML = '<div class="eform"><div class="arow"><label>새 시각</label>' + timePick('class="edT"', eb.dataset.time) + ' ' +
+        const edt = new Date(rec.dataset.wd + 'T00:00:00');
+        rec.querySelector('.edSlot').innerHTML = '<div class="eform"><div style="font-weight:800;margin-bottom:6px">✏️ ' + (edt.getMonth() + 1) + '/' + edt.getDate() + ' (' + WEEK[edt.getDay()] + ') ' +
+          esc(eb.dataset.type) + ' ' + (eb.dataset.nd === '1' ? '다음날 ' : '') + esc(eb.dataset.time) + ' 고치기</div><div class="arow"><label>새 시각</label>' + timePick('class="edT"', eb.dataset.time) + ' ' +
           '<label><input type="checkbox" class="edN"' + (eb.dataset.nd === '1' ? ' checked' : '') + '> 다음날</label></div>' +
           '<div class="arow edTy"><label>구분</label>' + ['출근', '퇴근'].map((v) => '<button class="abtn' + (v === eb.dataset.type ? ' sel' : '') + '" data-ed="ty" data-t="' + v + '">' + v + '</button>').join('') + '</div>' +
           placeChips(eb.dataset.place) +
           '<div class="arow"><button class="abtn go" data-ed="editsave">저장</button></div></div>';
+        // 고치는 칸까지 보이게 내려감: 기록 줄부터 보이게 하되, 화면보다 길면 [저장]까지 있는 고치는 칸을 우선
+        const ef = rec.querySelector('.eform'), fitEd = () => { reveal($('adminBody'), rec); reveal($('adminBody'), ef); };
+        fitEd(); requestAnimationFrame(fitEd); setTimeout(fitEd, 350);
         return;
       }
       if (k === 'editsave') {
