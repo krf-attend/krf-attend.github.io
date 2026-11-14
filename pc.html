@@ -328,7 +328,7 @@
     return best;
   }
   async function allStaff() {
-    const a = docs(await db.collection('staff').get());
+    const a = docs(await db.collection('staff').get()).filter((e) => !e.del);   // 지운 직원(시트 반영 대기)은 빼고
     a.forEach((e) => { e.order = Number(e.order) || 999; });
     a.sort((x, y) => x.order - y.order);
     return a;
@@ -528,15 +528,40 @@
       if (st.some((e) => e.name === name && e.status !== '퇴사')) return { ok: false, error: '같은 이름의 직원이 이미 있어요' };
       let maxNo = 0, maxOrd = 0;
       st.forEach((e) => { maxNo = Math.max(maxNo, Number(e.no) || 0); if (e.order < 999) maxOrd = Math.max(maxOrd, e.order); });
-      const no = String(maxNo + 1);
+      let no = String(maxNo + 1);   // 사번을 넣지 않으면 자동 (가장 큰 번호 + 1)
+      if (d.newNo !== undefined && d.newNo !== null && String(d.newNo).trim() !== '') {
+        const n = Number(String(d.newNo).trim());
+        if (!(Number.isInteger(n) && n >= 1 && n <= 99999)) return { ok: false, error: '사번은 1~99999 사이 숫자로 넣어 주세요' };
+        if (st.some((e) => String(e.no) === String(n))) return { ok: false, error: n + '번은 이미 다른 직원이 쓰고 있어요' };
+        if (await liveRecCount(n)) return { ok: false, error: n + '번으로 남아 있는 출퇴근 기록이 있어서 쓸 수 없어요' };
+        no = String(n);
+      }
       await db.doc('staff/' + no).set({ no: no, name: name, order: maxOrd + 1, dept: dept, status: '재직', dev: '', ok: false, admin: false, mate: false, req: null, upd: Date.now(), sheet: false });
       mirror('staff', [no]);
-      return { ok: true, no: maxNo + 1 };
+      return { ok: true, no: Number(no) };
     }
     const no = String(d.no), e = st.filter((x) => String(x.no) === no)[0];
     if (!e) return { ok: false, error: '직원을 찾지 못했어요' };
     if (name !== e.name && st.some((x) => String(x.no) !== no && x.name === name && x.status !== '퇴사')) return { ok: false, error: '같은 이름의 직원이 이미 있어요' };
     await db.doc('staff/' + no).update({ name: name, dept: dept, upd: Date.now(), sheet: false });
+    mirror('staff', [no]);
+    return { ok: true };
+  };
+
+  /** 이 사번으로 남아 있는(지우지 않은) 출퇴근 기록 수 */
+  async function liveRecCount(no) {
+    return docs(await db.collection('records').where('no', '==', String(no)).get()).filter((r) => !r.del).length;
+  }
+  /** 직원 지우기: 출퇴근 기록이 하나도 없을 때만 (기록이 있으면 '퇴사'로). 시트 줄은 서버가 지움 */
+  H.adminStaffDelete = async function (d) {
+    if (!isAdmin()) return { ok: false, error: 'not admin' };
+    const no = String(d.no || ''), name = String(d.name || '').trim(), e = await getDoc('staff/' + no);
+    if (!e || e.del || e.name !== name) return { ok: false, error: '직원 목록이 바뀌었어요. 새로 고침해 주세요' };
+    if (dv && String(dv.no) === no) return { ok: false, error: '내 이름은 지울 수 없어요' };
+    if (e.admin) return { ok: false, error: name + '님은 관리자예요. 관리자 권한을 먼저 끈 뒤 지워 주세요' };
+    const n = await liveRecCount(no);
+    if (n) return { ok: false, error: name + '님의 출퇴근 기록이 ' + n + '건 있어서 지울 수 없어요.\n기록이 있는 직원은 상태를 \'퇴사\'로 바꿔 주세요.' };
+    await db.doc('staff/' + no).update({ del: true, sheet: false, upd: Date.now() });
     mirror('staff', [no]);
     return { ok: true };
   };
@@ -796,7 +821,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 15:09';
+  const VER = '2026-11-14 17:37';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -1059,6 +1084,7 @@
     return staff;
   }
   const tm = (r) => '<span style="border-bottom:2px solid ' + placeColor(r.place) + '" title="' + esc(r.place) + '">' + (r.day !== r.wd ? '↗' : '') + esc(r.time) + (r.fix ? '*' : '') + '</span>';
+  const tmCarried = (r) => '<span style="border-bottom:2px solid ' + placeColor(r.place) + '" title="' + esc(r.place) + ' · 전날 근무의 퇴근">↙' + esc(r.time) + (r.fix ? '*' : '') + '</span>';
   function cellInfo(items, date) {
     const ins = items.filter((r) => r.type === '출근'), outs = items.filter((r) => r.type === '퇴근');
     const working = ins.length && (date === todayStr() || Date.now() - ins[ins.length - 1].at < 16 * 3600 * 1000);
@@ -1079,22 +1105,27 @@
       for (let d = 1; d <= last; d++) {
         const wd = new Date(y, m - 1, d).getDay(), date = ym + '-' + String(d).padStart(2, '0');
         const items = (by[s.no] || {})[date] || [];
+        // 야간 근무: 다음날 찍은 퇴근은 실제로 퇴근한 날 칸에 보여 줌 (전날 근무의 퇴근은 ↙ 표시)
+        const prev = d > 1 ? ym + '-' + String(d - 1).padStart(2, '0') : '';
+        const carried = prev ? ((by[s.no] || {})[prev] || []).filter((r) => r.type === '퇴근' && r.day === date) : [];
+        const lastDay = d === last;   // 달 마지막 날 근무의 다음날 퇴근은 다음 달 칸이 없으니 이 칸에 ↗로 둠
         let cell = '';
+        carried.forEach((r) => { if (r.place) seen[r.place] = 1; cell += '<div class="out">' + tmCarried(r) + '</div>'; });
         if (items.length) {
           days++;
           pairs(items).forEach((p) => { if (p.in && p.out) tot += p.out.at - p.in.at; });
           items.forEach((r) => { if (r.place) seen[r.place] = 1; });
-          const c = cellInfo(items, date);
+          const c = cellInfo(items, date), outsHere = c.outs.filter((r) => r.day === date || lastDay);
           cell += c.ins.length ? '<div class="in">' + tm(c.ins[0]) + '</div>' : '<div><span class="miss">출근?</span></div>';
-          cell += c.outs.length ? '<div class="out">' + tm(c.outs[c.outs.length - 1]) + '</div>' : (c.needOut ? '<div><span class="miss">퇴근?</span></div>' : '');
+          cell += outsHere.length ? '<div class="out">' + tm(outsHere[outsHere.length - 1]) + '</div>' : (c.needOut ? '<div><span class="miss">퇴근?</span></div>' : '');
           if (items.length > 2) cell += '<div class="more">' + items.length + '건</div>';
         }
-        h += '<td class="c' + (wd === 0 || wd === 6 ? ' we' : '') + (dk && dk.no === s.no && dk.wd === date ? ' sel' : '') + '" data-no="' + esc(s.no) + '" data-wd="' + date + '">' + cell + '</td>';
+        h += '<td class="c' + (wd === 0 || wd === 6 ? ' we' : '') + (dk && dk.no === s.no && dk.wd === date ? ' sel' : '') + '" data-no="' + esc(s.no) + '" data-wd="' + (!items.length && carried.length ? prev : date) + '">' + cell + '</td>';   // 전날 근무의 퇴근만 있는 칸은 누르면 그 근무일을 엶
       }
       h += '<td class="tot">' + days + '일<small>' + hm(tot) + '</small></td></tr>';
     });
     h += '</tbody></table><div class="leg">' + Object.keys(seen).sort().map((p) => '<span><i style="background:' + placeColor(p) + '"></i>' + esc(p) + '</span>').join('') +
-      '<span>↗ 다음날 퇴근</span><span>* 관리자가 보정한 시각</span><span>칸을 누르면 그날 기록을 고칠 수 있어요</span></div></div>';
+      '<span>↙ 전날 출근한 야간 근무의 퇴근</span><span>* 관리자가 보정한 시각</span><span>칸을 누르면 그날 기록을 고칠 수 있어요</span></div></div>';
     $('filters').innerHTML = '';
     $('view').innerHTML = staff.length ? h : '<div class="empty">직원이 없어요</div>';
   }
@@ -1259,16 +1290,19 @@
     if (T === 'err') { $('view').innerHTML = '<div class="empty">불러오지 못했어요. [새로 고침]을 눌러 주세요</div>'; return; }
     const rows = T.staff.filter((e) => staffAll || e.status !== '퇴사');
     const dsel = (cur, attr) => '<select ' + attr + '>' + DEPTS.map((d) => opt(d, cur)).join('') + (DEPTS.indexOf(cur) < 0 ? opt(cur, cur, cur || '고르기') : '') + '</select>';
+    const nextNo = T.staff.reduce((m, e) => Math.max(m, Number(e.no) || 0), 0) + 1;
     $('view').innerHTML = '<div class="pad"><div class="form"><b>직원 추가</b><input type="text" id="sName" placeholder="이름" style="width:140px">' + dsel('주간', 'id="sDept"') +
-      '<button class="btn pri" data-act="staffAdd">' + ic('plus', 16) + '추가</button><span class="sub2">사원번호는 자동으로 붙어요</span></div>' +
-      '<div class="hint">' + rows.length + '명 · 값을 바꾸면 바로 저장돼요</div>' +
-      '<table class="list"><thead><tr><th>번호</th><th>이름</th><th>부서</th><th>상태</th><th>휴대폰</th><th>관리자</th><th>같이 찍기</th></tr></thead><tbody>' +
+      '<input type="number" id="sNo" min="1" max="99999" placeholder="사번 (비우면 ' + nextNo + ')" style="width:150px">' +
+      '<button class="btn pri" data-act="staffAdd">' + ic('plus', 16) + '추가</button><span class="sub2">사원번호를 비워 두면 ' + nextNo + '번으로 자동으로 붙어요</span></div>' +
+      '<div class="hint">' + rows.length + '명 · 값을 바꾸면 바로 저장돼요 · 출퇴근 기록이 없는 직원만 지울 수 있어요 (기록이 있으면 \'퇴사\'로)</div>' +
+      '<table class="list"><thead><tr><th>번호</th><th>이름</th><th>부서</th><th>상태</th><th>휴대폰</th><th>관리자</th><th>같이 찍기</th><th></th></tr></thead><tbody>' +
       rows.map((e) => '<tr class="keep" data-no="' + esc(e.no) + '" data-name="' + esc(e.name) + '"' + (e.status === '퇴사' ? ' style="opacity:.55"' : '') + '><td class="num">' + esc(e.no) + '</td>' +
         '<td><input type="text" data-sf="name" value="' + esc(e.name) + '" style="width:120px"></td><td>' + dsel(e.dept, 'data-sf="dept"') + '</td>' +
         '<td><select data-sf="status">' + ['재직', '휴직', '퇴사'].map((v) => opt(v, e.status)).join('') + '</select></td>' +
         '<td>' + (e.registered ? (e.ok ? '<span class="chip ok">등록됨</span>' : '<span class="chip warn">승인 대기</span>') + ' <button class="btn sm" data-act="staffReset">등록 초기화</button>' : '<span class="chip">미등록</span>') + '</td>' +
         '<td><input type="checkbox" data-sf="admin"' + (e.admin ? ' checked' : '') + (T.super ? '' : ' disabled') + '></td>' +
-        '<td><input type="checkbox" data-sf="mate"' + (e.mate ? ' checked' : '') + '></td></tr>').join('') +
+        '<td><input type="checkbox" data-sf="mate"' + (e.mate ? ' checked' : '') + '></td>' +
+        '<td><button class="btn sm danger" data-act="staffDel">' + ic('trash', 15) + '지우기</button></td></tr>').join('') +
       '</tbody></table></div>';
   }
   async function staffDo(r, okMsg) {
@@ -1538,9 +1572,22 @@
       if (act === 'staffAdd') {
         const name = $('sName').value.trim();
         if (!name) { alert('이름을 넣어 주세요'); return; }
-        if (!confirm(name + '님을 ' + $('sDept').value + ' 직원으로 추가할까요?')) return;
+        const newNo = $('sNo').value.trim();
+        if (newNo && !/^\d{1,5}$/.test(newNo)) { alert('사번은 숫자로 넣어 주세요'); return; }
+        if (newNo && T.staff.some((e) => String(e.no) === String(Number(newNo)))) { alert(Number(newNo) + '번은 이미 다른 직원이 쓰고 있어요'); return; }
+        if (!confirm(name + '님을 ' + $('sDept').value + ' 직원으로 추가할까요?' + (newNo ? '\n사번: ' + Number(newNo) + '번' : '\n사번: 자동'))) return;
         b.disabled = true;
-        await staffDo(await call('adminStaffSave', { name: name, dept: $('sDept').value }), name + '님을 추가했어요');
+        const r = await call('adminStaffSave', { name: name, dept: $('sDept').value, newNo: newNo });
+        await staffDo(r, name + '님을 추가했어요' + (r && r.no ? ' (' + r.no + '번)' : ''));
+        return;
+      }
+      if (act === 'staffDel') {
+        if (!confirm(tr.dataset.name + '님(' + tr.dataset.no + '번)을 직원 목록에서 지울까요?\n출퇴근 기록이 있으면 지워지지 않아요. 그때는 상태를 \'퇴사\'로 바꿔 주세요.')) return;
+        b.disabled = true;
+        const r = await call('adminStaffDelete', { no: tr.dataset.no, name: tr.dataset.name });
+        b.disabled = false;
+        if (!r || !r.ok) { alert((r && r.error) || '지우지 못했어요. 인터넷 연결을 확인해 주세요'); return; }
+        await staffDo(r, tr.dataset.name + '님을 지웠어요');
         return;
       }
       if (act === 'staffReset') {
