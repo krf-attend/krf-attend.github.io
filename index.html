@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:40</div>
+    <div id="ver">화면 버전 2026-11-14 13:33</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1114,7 +1114,7 @@
     if (!d.working.length) h += '<div class="aempty">출근 중인 사람이 없어요</div>';
     else h += '<div class="acard">' + d.working.map((w) => '<div style="font-size:20px;line-height:1.7"><b>' + esc(w.name) + '</b> <span class="asub">' + esc(w.time) + ' 출근 · ' + esc(w.place) + '</span>' + (w.nogps ? ' <span class="atag wait">📍 위치 없음</span>' : '') + '</div>').join('') + '</div>';
     aStaff = d.staff; aSuper = d.super;
-    h += '<div class="acard"><button class="abtn" data-op="missing" style="width:100%">🔎 빠진 기록 모아 보기</button>' + (IS_PC ? '<button class="abtn" data-op="pcopen" style="width:100%;margin-top:8px">💻 PC 관리 화면 열기</button>' : d.super ? '<button class="abtn" data-op="pcpair" style="width:100%;margin-top:8px">💻 PC 연결</button>' : '') + '</div>';
+    h += '<div class="acard"><button class="abtn" data-op="missing" style="width:100%">🔎 빠진 기록 모아 보기</button>' + (IS_PC ? '<button class="abtn" data-op="pcopen" style="width:100%;margin-top:8px">💻 PC 관리 화면 열기</button>' : '<button class="abtn" data-op="pcpair" style="width:100%;margin-top:8px">💻 PC 연결</button>') + '</div>';
     h += '<div id="aStaff"></div>';
     body.innerHTML = h;
     renderStaff();
