@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:09</div>
+    <div id="ver">화면 버전 2026-11-14 11:12</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -974,7 +974,13 @@
     if (!had || JSON.stringify(d.days) !== sig) drawHist(d);
     histWarm();
   }
-  const HIST_PAL = ['#1f5fbf', '#8e44ad', '#00897b', '#c2185b', '#6d4c41', '#f39c12'], histPC = {};
+  // 장소 색은 장소마다 고정 (누구 달력을 보든 같은 장소는 같은 색). 목록에 없는 장소는 이름으로 정해져 항상 같은 색
+  const HIST_FIX = { '인용홀': '#1f5fbf', '순국': '#00897b', '기억': '#8e44ad', '외부': '#6d4c41' }, HIST_PAL = ['#c2185b', '#f39c12', '#5d6d7e', '#2e7d32'], histPC = {};
+  function placeColor(p) {
+    if (HIST_FIX[p]) return HIST_FIX[p];
+    let h = 0; for (let i = 0; i < p.length; i++) h = (h * 31 + p.charCodeAt(i)) >>> 0;
+    return HIST_PAL[h % HIST_PAL.length];
+  }
   function drawHist(d) {
     const [y, m] = histYM.split('-').map(Number);
     histDays = {};
@@ -987,7 +993,7 @@
     // 장소마다 밑줄 색을 정해 달력 칸에서 어디 출퇴근인지 보이게 함
     const seen = {};
     d.days.forEach((day) => day.items.forEach((it) => { if (it.place) seen[it.place] = 1; }));
-    Object.keys(seen).sort().forEach((p) => { if (!histPC[p]) histPC[p] = HIST_PAL[Object.keys(histPC).length % HIST_PAL.length]; });
+    Object.keys(seen).forEach((p) => { histPC[p] = placeColor(p); });
     const tmC = (it) => '<span' + (histPC[it.place] ? ' style="border-bottom:3px solid ' + histPC[it.place] + '"' : '') + '>' + tmS(it) + '</span>';
     const pleg = !Object.keys(seen).length ? '' : '<div class="pleg">' + Object.keys(seen).sort().map((p) => '<span><i style="background:' + histPC[p] + '"></i>' + esc(p) + '</span>').join('') + '</div>';
     const cellOf = {};
