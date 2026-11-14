@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 20:34</div>
+    <div id="ver">화면 버전 2026-11-15 01:00</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -744,6 +744,16 @@
       return { ok: true };
     }
     if (r.del) return { ok: false, error: '이미 지운 기록이에요' };
+    if (d.op === 'cls') {   // 근무 구분: 이 출근으로 시작한 근무를 '정상' / '연장(대타)'으로 (비우면 자동). 출퇴근카드에서 씀
+      const cls = String(d.cls || '');
+      if (['', '정상', '연장'].indexOf(cls) < 0) return { ok: false, error: '근무 구분을 확인해 주세요' };
+      if (r.type !== '출근') return { ok: false, error: '근무 구분은 출근 기록에서 정해 주세요' };
+      if (cls === String(r.cls || '')) return { ok: false, error: '바뀐 내용이 없어요' };
+      batch.update(db.doc('records/' + id), { cls: cls, upd: now });
+      const lid = logDoc(batch, '근무구분 ' + (r.cls || '자동') + '→' + (cls || '자동'), e, r.type, r.wd, r.at, r.at, r.place, id);
+      await editCommit(batch, id, lid, r.no);
+      return { ok: true };
+    }
     if (d.expectAt && Number(d.expectAt) !== r.at) return { ok: false, error: '기록이 바뀌었어요. 다시 열어 주세요' };
     if (d.op === 'delete') {
       batch.update(db.doc('records/' + id), { del: true, delBy: myName(), delAt: now, sheet: false, upd: now });
@@ -792,7 +802,7 @@
   H.adminMonthRecs = async function (p) {
     if (!isAdmin()) return { ok: false, error: 'not admin' };
     const recs = (await monthRecs(p.month)).map((d) => ({ row: d.id, no: String(d.no), name: d.name || '', at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at),
-      type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), fix: !!d.fix }));
+      type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), fix: !!d.fix, cls: d.cls || '' }));
     const staff = (await allStaff()).map((e) => ({ no: String(e.no), name: e.name, dept: e.dept, shift: e.shift || '', status: e.status }));
     return { ok: true, month: p.month, recs: recs, staff: staff, places: await placeChoices(), me: myName() };
   };
