@@ -184,7 +184,6 @@
     <div class="grp">관리</div>
     <button class="nav" data-view="staff"><span data-ic="users"></span>직원</button>
     <button class="nav" data-view="place"><span data-ic="pin"></span>장소</button>
-    <button class="nav" data-view="paste"><span data-ic="paste"></span>여러 건 넣기</button>
     <button class="nav" data-view="sheet"><span data-ic="sheet"></span>근태기록표</button>
     <button class="nav" data-view="card"><span data-ic="card"></span>출퇴근카드</button>
     <div class="foot">
@@ -220,7 +219,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 13:27';
+  const VER = '2026-11-14 13:41';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -293,7 +292,7 @@
     return out;
   }
 
-  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', paste: '여러 건 넣기', sheet: '근태기록표', card: '출퇴근카드' };
+  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', sheet: '근태기록표', card: '출퇴근카드' };
   const MONTHLY = { grid: 1, list: 1, miss: 1, log: 1, sheet: 1, card: 1 }, HAS_CSV = { grid: 1, list: 1, miss: 1, log: 1, staff: 1, place: 1, sheet: 1 };
   let ym = ymStr(new Date()), view = TITLE[store.get('pcView')] ? store.get('pcView') : 'grid', D = null, loadSeq = 0, idSeq = 0;
   const needD = () => view === 'grid' || view === 'list' || view === 'miss' || view === 'card';
@@ -708,50 +707,6 @@
       '</tbody></table><div class="hint" style="margin-top:12px">장소 이름은 이미 찍힌 기록과 이어져 있어서 바꿀 수 없어요. 지우기는 그 장소로 찍힌 기록이 하나도 없을 때만 돼요. "외부"는 등록 장소 밖에서 찍을 때 자동으로 쓰여요.</div></div>';
   }
 
-  // ── 여러 건 넣기: 엑셀에서 복사한 줄을 붙여넣어 한꺼번에 ──
-  let pasteRows = null, pasteText = '';
-  function parsePaste(text) {
-    const staff = (D && D.staff) || [], places = (D && D.places) || [], year = Number(ym.slice(0, 4));
-    return text.split(/\r?\n/).map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim()).map((line) => {
-      const c = (line.indexOf('\t') >= 0 ? line.split('\t') : line.split(/\s{2,}|,/)).map((x) => x.trim());
-      const o = { raw: c, err: [] };
-      if (c[0] === '이름') return null;
-      const st = staff.filter((s) => s.name === c[0]);
-      if (st.length === 1) { o.no = st[0].no; o.name = st[0].name; } else o.err.push(st.length ? '같은 이름이 여러 명' : '모르는 이름');
-      let m = /^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})/.exec(c[1] || '') || null, y = year, mo, da;
-      if (m) { y = Number(m[1]); mo = Number(m[2]); da = Number(m[3]); }
-      else if ((m = /^(\d{1,2})[-./](\d{1,2})$/.exec(c[1] || '') || /(\d{1,2})월\s*(\d{1,2})일/.exec(c[1] || ''))) { mo = Number(m[1]); da = Number(m[2]); }
-      if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) o.wd = y + '-' + String(mo).padStart(2, '0') + '-' + String(da).padStart(2, '0'); else o.err.push('날짜');
-      o.type = /퇴/.test(c[2] || '') ? '퇴근' : /출/.test(c[2] || '') ? '출근' : ''; if (!o.type) o.err.push('출근/퇴근');
-      const t = /(\d{1,2}):(\d{2})/.exec(c[3] || '');
-      if (t) { let h = Number(t[1]); if (/오후|PM/i.test(c[3]) && h < 12) h += 12; if (/오전|AM/i.test(c[3]) && h === 12) h = 0; if (h < 24 && Number(t[2]) < 60) o.time = String(h).padStart(2, '0') + ':' + t[2]; }
-      if (!o.time) o.err.push('시각');
-      if (places.indexOf(c[4]) >= 0) o.place = c[4]; else o.err.push('장소');
-      o.nd = /다음|익일|^y$|^1$|true/i.test(c[5] || '');
-      if (!o.err.length && kst(o.wd, o.time, o.nd) > Date.now()) o.err.push('앞으로의 시각');
-      return o;
-    }).filter((o) => o);
-  }
-  function renderPaste() {
-    $('filters').innerHTML = '';
-    if (!D) { $('view').innerHTML = '<div class="empty">불러오는 중…</div>'; return; }
-    let h = '<div class="pad" style="max-width:1000px"><div class="card"><h3>엑셀에서 복사한 줄 붙여넣기</h3>' +
-      '<div class="sub2" style="line-height:1.8;margin-bottom:10px">엑셀에서 아래 순서의 칸을 골라 복사한 뒤 붙여넣으세요.<br><b style="color:#191f28">이름 · 근무일 · 출근/퇴근 · 시각 · 장소 · (다음날)</b><br>' +
-      '예: <span class="num">홍길동 &nbsp; 2026-11-05 &nbsp; 퇴근 &nbsp; 18:10 &nbsp; ' + esc(D.places[0] || '인용홀') + '</span> · 야간 퇴근처럼 근무일 다음 날 기록이면 맨 끝 칸에 "다음날"을 적어 주세요.<br>' +
-      '쓸 수 있는 장소: ' + D.places.map((p) => esc(p)).join(', ') + '</div>' +
-      '<textarea id="pasteTxt" placeholder="여기에 붙여넣기 (Ctrl+V)">' + esc(pasteText) + '</textarea>' +
-      '<div style="margin-top:10px;display:flex;gap:8px"><button class="btn pri" data-act="pasteCheck">미리 보기</button><button class="btn" data-act="pasteClear">지우기</button></div></div>';
-    if (pasteRows) {
-      const good = pasteRows.filter((o) => !o.err.length);
-      h += '<div style="margin:16px 0 10px;display:flex;align-items:center;gap:10px"><b>미리 보기</b><span class="sub2">넣을 수 있는 줄 ' + good.length + '건 · 문제 있는 줄 ' + (pasteRows.length - good.length) + '건 (문제 있는 줄은 넣지 않아요)</span><span class="sp"></span>' +
-        '<button class="btn pri" data-act="pasteGo"' + (good.length ? '' : ' disabled') + '>' + ic('check', 16) + good.length + '건 넣기</button></div>' +
-        '<table class="list"><thead><tr><th>이름</th><th>근무일</th><th>구분</th><th>시각</th><th>장소</th><th>다음날</th><th>확인</th></tr></thead><tbody>' +
-        pasteRows.map((o) => '<tr><td>' + esc(o.raw[0] || '') + '</td><td class="num">' + esc(o.wd ? md(o.wd) + ' ' + o.wd.slice(0, 4) : (o.raw[1] || '')) + '</td><td>' + esc(o.type || o.raw[2] || '') + '</td><td class="num">' + esc(o.time || o.raw[3] || '') + '</td><td>' + esc(o.raw[4] || '') + '</td><td>' + (o.nd ? '다음날' : '') + '</td>' +
-          '<td>' + (o.err.length ? '<span class="chip bad">' + esc(o.err.join(', ')) + ' 확인</span>' : '<span class="chip ok">넣을 수 있음</span>') + '</td></tr>').join('') + '</tbody></table>';
-    }
-    $('view').innerHTML = h + '</div>';
-  }
-
   // ── 근태기록표: 구글 시트의 '근태기록' 탭이 계산한 표를 그대로 ──
   const SH = {};
   let shSeq = 0;
@@ -868,7 +823,6 @@
     if (view === 'staff') return renderStaff();
     if (view === 'place') return renderPlace();
     if (view === 'sheet') return renderSheet();
-    if (view === 'paste') return renderPaste();
     if (!D) return;
     if (view === 'grid') { renderGrid(); renderDrawer(); } else if (view === 'miss') renderMiss(); else renderList();
   }
@@ -1023,16 +977,6 @@
         if (!r || !r.ok) { alert((r && r.error) || '지우지 못했어요. 인터넷 연결을 확인해 주세요'); return; }
         toast(cur.name + ' 장소를 지웠어요');
         dropMonths(); load(true); loadPlaces();
-        return;
-      }
-      if (act === 'pasteClear') { pasteText = ''; pasteRows = null; renderPaste(); return; }
-      if (act === 'pasteCheck') { pasteText = $('pasteTxt').value; pasteRows = parsePaste(pasteText); if (!pasteRows.length) { pasteRows = null; alert('붙여넣은 내용이 없어요'); } renderPaste(); return; }
-      if (act === 'pasteGo') {
-        const good = (pasteRows || []).filter((o) => !o.err.length);
-        if (!good.length || !confirm(good.length + '건의 기록을 넣을까요?')) return;
-        good.forEach((o) => pushAdd(o.no, o.wd, { type: o.type, time: o.time, nd: o.nd, place: o.place }));
-        pasteText = ''; pasteRows = null; renderPaste();
-        toast(good.length + '건을 넣고 있어요. 오른쪽 위에 "모두 저장됨"이 뜰 때까지 창을 닫지 마세요');
         return;
       }
       if (act === 'leave') {
