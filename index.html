@@ -231,7 +231,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:50</div>
+    <div id="ver">화면 버전 2026-11-14 12:10</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -912,11 +912,17 @@
       .catch(() => { c.p = null; return null; });
     return c.p;
   }
-  function histWarm() {
+  // 보고 있는 달의 다음 달과 앞의 다섯 달을 뒤에서 차례로 미리 받아 둠
+  let histWarmRun = 0;
+  async function histWarm() {
+    const run = ++histWarmRun, no = histNo;
     const [y, m] = histYM.split('-').map(Number), nowYM = ymStr(new Date());
-    [ymStr(new Date(y, m - 2, 1)), ymStr(new Date(y, m, 1))].forEach((mm) => {
-      if (mm <= nowYM && !(histCache[histKey(mm)] || {}).d) histFetch(mm);
-    });
+    const list = [ymStr(new Date(y, m, 1))];
+    for (let k = 1; k <= 5; k++) list.push(ymStr(new Date(y, m - 1 - k, 1)));
+    for (const mm of list) {
+      if (run !== histWarmRun || no !== histNo || $('hist').classList.contains('hidden')) return;
+      if (mm <= nowYM && !(histCache[histKey(mm)] || {}).d) await histFetch(mm);
+    }
   }
   async function loadHist() {
     const [y, m] = histYM.split('-').map(Number);
