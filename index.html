@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:05</div>
+    <div id="ver">화면 버전 2026-11-14 11:15</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -905,10 +905,28 @@
       else if (p.in) html += '<div class="hrow"><span class="in">출근</span> ' + tmP(p.in) + (date === todayStr() ? ' → 근무 중' : ' → 퇴근 기록 없음') + '</div>';
       else html += '<div class="hrow"><span class="out">퇴근</span> ' + next(p.out) + tmP(p.out) + '</div>';
     });
+    // 출근만 있거나 퇴근만 있으면 빠진 쪽을 바로 넣는 버튼 (관리자만). 전날 근무의 퇴근만 있는 경우는 그 근무일로 넣음
+    const adds = [];
+    if (histNo !== null) {
+      Object.keys(histDays).forEach((k) => {
+        if (k === date) return;
+        pairsOf(histDays[k]).forEach((p) => { if (!p.in && p.out && p.out.day === date) adds.push(missPre(k, p.out, '출근')); });
+      });
+      if (day) pairsOf(day).forEach((p) => {
+        if (p.in && !p.out) { if (date !== todayStr() && Date.now() - p.in.at > 16 * 3600 * 1000) adds.push(missPre(date, p.in, '퇴근')); }
+        else if (!p.in && p.out) adds.push(missPre(date, p.out, '출근'));
+      });
+      adds.forEach((a, i) => {
+        const wdt = new Date(a.wd + 'T00:00:00');
+        html += '<button class="abtn go histAdd" data-i="' + i + '" style="margin-top:12px;width:100%">➕ 빠진 ' + a.type + ' 넣기' +
+          (a.wd !== date ? ' (' + (wdt.getMonth() + 1) + '/' + wdt.getDate() + ' 근무)' : '') + '</button>';
+      });
+    }
     const emptyDay = !day && !carried;
     if (histNo !== null) html += '<button class="abtn" id="histFix" style="margin-top:12px;width:100%">' + (emptyDay ? '➕ 이 날 기록 넣기' : '✏️ 이 날 기록 고치기') + '</button>';
     $('histDetail').innerHTML = html;
-    if ($('histFix')) $('histFix').addEventListener('click', () => histFixGo(date, emptyDay));
+    if ($('histFix')) $('histFix').addEventListener('click', () => histFixGo(date, emptyDay ? { wd: date, type: '출근', time: '09:00', nd: false } : null));
+    document.querySelectorAll('.histAdd').forEach((b) => b.addEventListener('click', () => histFixGo(date, adds[Number(b.dataset.i)])));
   }
   // 한 번 본 달은 기억해 두었다가 바로 보여 주고, 옆 달은 미리 받아 둠
   const histCache = {};
@@ -1005,10 +1023,17 @@
   // 관리자가 다른 직원 달력을 볼 때는 histNo에 사번 (null이면 내 기록)
   let histNo = null, histWho = '';
   // 관리자가 달력에서 본 날짜의 기록을 바로 고치러 감 (고친 뒤 '← 달력'으로 돌아옴)
+  // 빠진 쪽을 넣을 때 시각을 미리 짐작: 오후 출근이면 야간 근무로 보고 퇴근은 다음날 아침, 다음날 퇴근만 있으면 출근은 전날 저녁
+  function missPre(wd, has, miss) {
+    const h = Number(String(has.time || '').slice(0, 2)) || 0;
+    if (miss === '퇴근') return h >= 14 ? { wd: wd, type: '퇴근', time: '09:00', nd: true } : { wd: wd, type: '퇴근', time: '18:00', nd: false };
+    return (has.day && has.day !== wd) ? { wd: wd, type: '출근', time: '17:00', nd: false } : { wd: wd, type: '출근', time: '09:00', nd: false };
+  }
   function histFixGo(date, addNew) {
     edBackCal = { no: histNo, who: histWho, ym: histYM, day: date };
-    edBackMis = false; edAddPre = addNew ? { wd: date, type: '출근', time: '09:00' } : null;
-    edFocus = date; edFocusScroll = addNew ? 0 : 2; edYM = date.slice(0, 7);
+    edBackMis = false; edAddPre = addNew || null;
+    const fd = addNew ? addNew.wd : date;
+    edFocus = fd; edFocusScroll = addNew ? 0 : 2; edYM = fd.slice(0, 7);
     $('hist').classList.add('hidden');
     openRecords(histNo, histWho);
   }
@@ -1215,7 +1240,7 @@
         const dt = new Date(r.wd + 'T00:00:00');
         return '<div class="mrow"><span><b>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</b> ' + esc(r.has.type) + ' ' + esc(tmS(r.has)) + ' ' + esc(r.has.place || '') +
           ' · <span class="miss">' + r.miss + ' 없음</span></span>' +
-          '<button class="abtn go" data-mis="add" data-no="' + esc(s.no) + '" data-name="' + esc(s.name) + '" data-wd="' + r.wd + '" data-type="' + r.miss + '">넣기</button></div>';
+          '<button class="abtn go" data-mis="add" data-no="' + esc(s.no) + '" data-name="' + esc(s.name) + '" data-wd="' + r.wd + '" data-type="' + r.miss + '" data-ht="' + r.has.time + '" data-hd="' + r.has.day + '">넣기</button></div>';
       }).join('') + '</div>').join('');
   }
   function misClick(b) {
@@ -1227,7 +1252,7 @@
     }
     if (k === 'add') {
       edBackMis = true; edBackCal = null;
-      edAddPre = { wd: b.dataset.wd, type: b.dataset.type, time: b.dataset.type === '퇴근' ? '18:00' : '09:00' };
+      edAddPre = missPre(b.dataset.wd, { time: b.dataset.ht, day: b.dataset.hd }, b.dataset.type);
       edFocus = b.dataset.wd; edFocusScroll = 0; edYM = b.dataset.wd.slice(0, 7);
       openRecords(b.dataset.no, b.dataset.name);
     }
@@ -1268,11 +1293,11 @@
   }
   // 달력에서 '이 날 기록 고치기'로 넘어왔을 때: 그 날 기록에 표시를 하고 그 자리로 내려감
   let edFocus = '', edFocusScroll = 0, edBackCal = null, edBackMis = false, edAddPre = null;
-  function edAddForm(wd, type, time) {
+  function edAddForm(wd, type, time, nd) {
     const today = todayStr();
     $('edAdd').innerHTML = '<div class="eform"><div class="arow"><label>근무일</label><input type="date" id="edWd" value="' + (wd || today) + '" max="' + today + '"></div>' +
       '<div class="arow"><button class="abtn' + (type === '퇴근' ? '' : ' sel') + '" data-ed="tin">출근</button><button class="abtn' + (type === '퇴근' ? ' sel' : '') + '" data-ed="tout">퇴근</button></div>' +
-      '<div class="arow"><label>시각</label>' + timePick('id="edTime"', time || '09:00') + ' <label><input type="checkbox" id="edNd"> 다음날</label></div>' +
+      '<div class="arow"><label>시각</label>' + timePick('id="edTime"', time || '09:00') + ' <label><input type="checkbox" id="edNd"' + (nd ? ' checked' : '') + '> 다음날</label></div>' +
       placeChips('') +
       '<div class="arow"><button class="abtn go" data-ed="addsave">저장</button></div></div>';
   }
@@ -1291,7 +1316,7 @@
     if (!list) return;
     edPlaces = d.places || [];
     edData = d;
-    if (edAddPre && $('edAdd')) { const ap = edAddPre; edAddPre = null; edAddForm(ap.wd, ap.type, ap.time); }
+    if (edAddPre && $('edAdd')) { const ap = edAddPre; edAddPre = null; edAddForm(ap.wd, ap.type, ap.time, ap.nd); }
     // 이 달에 지운 기록 → 되살리기
     const del = d.deleted || [];
     $('edDel').innerHTML = !del.length ? '' : '<div class="asec" style="color:#777">🗑 지운 기록 (' + del.length + ')</div><div class="acard">' + del.map((r) => {
