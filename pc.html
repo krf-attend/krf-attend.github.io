@@ -825,7 +825,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 18:45';
+  const VER = '2026-11-14 18:56';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -1420,7 +1420,7 @@
       const wd = ym + '-' + String(d).padStart(2, '0'), w = new Date(y, m - 1, d).getDay(), items = by[wd] || [];
       const c = items.length ? cardDay(items, wd) : null;
       if (c) { work++; if (c.late) { lateN++; lateM += c.late; } if (c.early) { earlyN++; earlyM += c.early; } }
-      const tm = (r, cls) => r ? '<span class="' + cls + '">' + esc(r.time) + (r.fix ? '*' : '') + '</span>' + (r.day !== wd ? '<span class="nd"> 다음날</span>' : '') : '';
+      const tm = (r, cls) => r ? '<span class="' + cls + '">' + esc(r.time) + '</span>' + (r.day !== wd ? '<span class="nd"> 다음날</span>' : '') : '';   // 제출용이라 보정(*) 표시는 넣지 않음
       // 퇴근은 찍은 날짜 줄에 보여 줌: 그날 근무의 퇴근 + 전날 야간 근무의 다음날 아침 퇴근 (달 마지막 날 근무의 다음날 퇴근만 마지막 줄에 '다음날'로)
       const prevWd = d > 1 ? ym + '-' + String(d - 1).padStart(2, '0') : '';
       const outsHere = items.filter((r) => r.type === '퇴근' && (r.day === wd || d === last))
@@ -1452,7 +1452,7 @@
     $('filters').innerHTML = '<select id="cardSel">' + staff.map((s) => opt(s.no, cardNo, s.name + (s.dept ? ' · ' + s.dept : ''))).join('') + '</select>' +
       '<button class="btn" data-act="cardAll">' + ic('print', 16) + '전체 인쇄</button>';
     const s = staff.filter((x) => x.no === cardNo)[0];
-    $('view').innerHTML = s ? '<div class="pad"><div class="hint noprint">예전 지문 기계 카드와 같은 양식이에요. 지각·조퇴는 주간 09:00~18:00, 야간 17:00~다음날 09:00 기준으로 세고, 16·17시대 퇴근은 근태기록표처럼 18시대로 인정해요. * 는 관리자가 보정한 시각이에요.</div>' +
+    $('view').innerHTML = s ? '<div class="pad"><div class="hint noprint">예전 지문 기계 카드와 같은 양식이에요. 지각·조퇴는 주간 09:00~18:00, 야간 17:00~다음날 09:00 기준으로 세고, 16·17시대 퇴근은 근태기록표처럼 18시대로 인정해요.</div>' +
       '<div class="kcards">' + cardHtml(s) + '</div></div>' : '<div class="empty">직원이 없어요</div>';
   }
 
