@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 11:12</div>
+    <div id="ver">화면 버전 2026-11-14 11:17</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1269,11 +1269,11 @@
     admView = 'rec';
     const [y, m] = edYM.split('-').map(Number);
     body.innerHTML = '<div class="edHead"><div class="arow" style="justify-content:space-between"><button class="abtn" data-ed="back">' + (edBackMis ? '← 빠진 기록' : edBackCal ? '← 달력' : '← 목록') + '</button>' +
-      '<span class="aname">' + esc(nm) + '</span><span></span></div>' +
+      '<span class="aname">' + esc(nm) + '</span><button class="abtn go" data-ed="addform">+ 기록 넣기</button></div>' +
       '<div class="arow" style="justify-content:center"><button class="abtn" data-ed="prev">◀</button><span class="aname" style="margin:0 10px">' + y + '년 ' + m + '월</span>' +
       '<button class="abtn" data-ed="next"' + (edYM >= ymStr(new Date()) ? ' disabled' : '') + '>▶</button></div>' +
       '</div><div id="edSync"></div>' +
-      '<div class="acard"><button class="abtn go" data-ed="addform">+ 빠진 기록 넣기</button><div id="edAdd"></div></div>' +
+      '<div id="edAdd"></div>' +
       '<div class="acard" id="edList"><div class="aempty">불러오는 중…</div></div>' +
       '<div id="edDel"></div>';
     let c = null;
@@ -1301,11 +1301,11 @@
   let edFocus = '', edFocusScroll = 0, edBackCal = null, edBackMis = false, edAddPre = null;
   function edAddForm(wd, type, time, nd) {
     const today = todayStr();
-    $('edAdd').innerHTML = '<div class="eform"><div class="arow"><label>근무일</label><input type="date" id="edWd" value="' + (wd || today) + '" max="' + today + '"></div>' +
+    $('edAdd').innerHTML = '<div class="acard"><div class="eform"><div class="arow"><label>근무일</label><input type="date" id="edWd" value="' + (wd || today) + '" max="' + today + '"></div>' +
       '<div class="arow"><button class="abtn' + (type === '퇴근' ? '' : ' sel') + '" data-ed="tin">출근</button><button class="abtn' + (type === '퇴근' ? ' sel' : '') + '" data-ed="tout">퇴근</button></div>' +
       '<div class="arow"><label>시각</label>' + timePick('id="edTime"', time || '09:00') + ' <label><input type="checkbox" id="edNd"' + (nd ? ' checked' : '') + '> 다음날</label></div>' +
       placeChips('') +
-      '<div class="arow"><button class="abtn go" data-ed="addsave">저장</button></div></div>';
+      '<div class="arow"><button class="abtn go" data-ed="addsave">저장</button></div></div></div>';
   }
   function edFocusShow() {
     const list = $('edList');
@@ -1487,7 +1487,10 @@
         const [y, m] = edYM.split('-').map(Number);
         edYM = ymStr(new Date(y, m - 1 + (k === 'prev' ? -1 : 1), 1)); openRecords(edNo, edName); return;
       }
-      if (k === 'addform') { edAddForm(todayStr(), '출근', '09:00'); return; }
+      if (k === 'addform') {   // 위쪽에 고정된 버튼: 누르면 넣는 칸을 맨 위에 열고(다시 누르면 닫고) 그 자리로 올라감
+        if ($('edAdd').innerHTML) $('edAdd').innerHTML = ''; else { edAddForm(todayStr(), '출근', '09:00'); $('adminBody').scrollTop = 0; }
+        return;
+      }
       if (k === 'tp') return;   // ▲▼는 pointerdown에서 처리 (꾹 누르기 지원)
       if (k === 'pl' || k === 'ty') {
         eb.parentNode.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === eb)); return;
