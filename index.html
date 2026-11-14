@@ -230,7 +230,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 09:40</div>
+    <div id="ver">화면 버전 2026-11-14 10:00</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -479,7 +479,7 @@
     myState = s.state || '';
     if (prev && prev !== myState) picked = [];          // 출근↔퇴근이 바뀌면 고른 사람 초기화
     if (Array.isArray(s.mates)) mates = s.mates;
-    if (Array.isArray(s.places)) places = s.places;
+    if (Array.isArray(s.places)) { places = s.places; try { store.set('places', JSON.stringify(places)); } catch (e) {} }
     if (s.lastMs) lastMs = s.lastMs;
     const st = $('status');
     const btn = $('punch');
@@ -508,7 +508,11 @@
       const s = await api('status', { deviceId: deviceId });
       // 기억해 둔 것과 달리 슈퍼관리자가 아니면(로그아웃 등) 미리 띄운 관리자 화면을 닫음
       if (s && s.ok && !s.super && superCached) { superCached = false; superOpened = false; try { store.set('isSuper', ''); } catch (e) {} $('admin').classList.add('hidden'); }
-      if (s && s.ok && handleAuth(s) && !s.super) applyStatus(s);
+      if (s && s.ok && handleAuth(s) && !s.super) {
+        // 아직 서버로 못 보낸 출퇴근이 있으면, 화면의 상태(휴대폰에 저장된 것)는 그대로 두고 먼저 보냄
+        if (outbox().length) { if (Array.isArray(s.places)) places = s.places; flushOutbox(); }
+        else applyStatus(s);
+      }
     } catch (e) {
       $('status').textContent = '';
     }
@@ -608,7 +612,94 @@
     $('mates').classList.remove('hidden');
   }
 
+  // ── 출퇴근: 누르면 휴대폰에 먼저 저장하고 바로 '완료'. 서버에는 뒤에서 보내고, 확인을 못 받으면 다음에 다시 보냄 ──
+  const outbox = () => { try { const a = JSON.parse(store.get('outbox') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const saveOutbox = (a) => { store.set('outbox', JSON.stringify(a)); };
+  const dsp = (ms) => { const x = new Date(ms); return (x.getMonth() + 1) + '월 ' + x.getDate() + '일 ' + String(x.getHours()).padStart(2, '0') + ':' + String(x.getMinutes()).padStart(2, '0'); };
+  let flushing = false, flushTimer = null, lastCid = '', pendingShown = false;
+  async function flushOutbox() {
+    if (flushing) return;
+    flushing = true;
+    try {
+      for (;;) {
+        const box = outbox();
+        if (!box.length) break;
+        const it = box[0];
+        if (Date.now() - it.at > 7 * 24 * 3600 * 1000) { saveOutbox(box.slice(1)); continue; }   // 일주일 넘게 못 보낸 것은 버림
+        let d = null;
+        try { d = await api('punch', Object.assign({ deviceId: deviceId, sent: Date.now() }, it)); } catch (e) { d = null; }
+        if (!d) {                                           // 전파가 안 됨: 그대로 두고 조금 뒤 다시
+          if (it.cid === lastCid) show(it.type + ' 완료!\n' + it.place + ' · ' + dsp(it.at) + '\n(전파가 약해 조금 뒤 저장돼요)', 'ok');
+          break;
+        }
+        saveOutbox(outbox().filter((x) => x.cid !== it.cid));
+        if (d.ok && d.auth && d.auth !== 'ok') { show(''); handleAuth(d); continue; }
+        if (!d.ok || d.needPlace) {                         // 서버가 받아 주지 않음: 바로 알림
+          show('기록되지 않았어요\n다시 눌러 주세요', 'warn');
+          speak('기록되지 않았습니다. 다시 눌러 주세요');
+          vibrate([300, 120, 300]);
+          lastMs = 0;
+          continue;
+        }
+        if (it.cid === lastCid && !d.duplicate && (d.type !== it.type || d.place !== it.place || (d.also && d.also.length))) {
+          // 서버가 정한 내용이 화면에 보여 준 것과 다르면 서버 것으로 고쳐 보여 줌
+          let text = d.type + ' 완료!\n' + (d.place ? d.place + ' · ' : '') + d.time;
+          if (d.also && d.also.length) { text += '\n' + d.also.join(', ') + '님도 ' + d.type; speak(d.also.join(', ') + '님도 함께 ' + d.type + ' 처리되었습니다'); }
+          show(text, 'ok');
+          applyStatus({ state: d.type === '출근' ? 'working' : 'off', type: d.type, time: d.time, place: d.place, mates: [] });
+        }
+      }
+    } finally {
+      flushing = false;
+      clearTimeout(flushTimer);
+      if (outbox().length) flushTimer = setTimeout(flushOutbox, 20000);
+      else if (pendingShown) { pendingShown = false; setTimeout(loadStatus, 800); }   // 다 보냈으면 서버 상태로 새로 고침
+    }
+  }
+
   async function punch() {
+    const btn = $('punch');
+    btn.disabled = true;
+    try {
+      const type = myState === 'working' ? '퇴근' : '출근';
+      if ((Date.now() - lastMs) < 60 * 1000) { show('방금 처리되었어요', 'ok'); return; }   // 연달아 누름
+      if (!places.length) { await punchOnline(); return; }      // 장소 목록을 아직 못 받았으면 예전 방식
+      const alsoNos = picked.slice();
+      show('위치 확인 중…');
+      const fresh = lastPos && (Date.now() - lastPosAt) < 5 * 60 * 1000;   // 화면 열 때 미리 잡아 둔 위치를 5분까지 그대로 씀
+      // 위치는 길어도 2.5초만 기다림 (못 잡으면 장소를 직접 고름)
+      const c = fresh ? lastPos : await Promise.race([getPosition(), new Promise((r) => setTimeout(() => r(null), 2500))]);
+      let place = localPlace(c);
+      if (!place) {
+        show('');
+        const ch = places.map((p) => p.n);
+        if (ch.indexOf('외부') < 0) ch.push('외부');
+        place = await choosePlace(type, ch);
+        if (!place) { show('취소했어요\n다시 누르시면 됩니다', ''); return; }
+      }
+      const at = Date.now();
+      const item = { cid: at.toString(36) + Math.random().toString(36).slice(2, 8), at: at, type: type, place: place,
+                     lat: c ? c.latitude : '', lng: c ? c.longitude : '', acc: c ? Math.round(c.accuracy) : '',
+                     posErr: c ? '' : (lastPosErr || '시간 초과'), alsoNos: alsoNos };
+      saveOutbox(outbox().concat([item]));
+      if (!outbox().some((x) => x.cid === item.cid)) { await punchOnline(); return; }   // 휴대폰에 저장이 안 되면 예전 방식(서버 답을 기다림)
+      lastCid = item.cid; lastMs = at; picked = []; pendingShown = true;
+      show(type + ' 완료!\n' + place + ' · ' + hhmm(), 'ok');
+      speak(name + '님, ' + type + ' 처리되었습니다');
+      vibrate(200);
+      applyStatus({ state: type === '출근' ? 'working' : 'off', type: type, time: dsp(at), place: place, mates: [] });
+      flushOutbox();
+    } catch (e) {
+      show('기록되지 않았어요\n다시 눌러 주세요', 'warn');
+      speak('기록되지 않았습니다. 다시 눌러 주세요');
+      vibrate([300, 120, 300]);
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 3000);
+    }
+  }
+
+  // 예전 방식(서버 답을 기다림): 장소 목록을 아직 못 받았거나 휴대폰에 저장이 안 될 때만 씀
+  async function punchOnline() {
     const btn = $('punch');
     btn.disabled = true;
     const alsoNos = picked.slice();
@@ -1198,7 +1289,9 @@
       $('status').classList.add('hidden'); $('punch').classList.add('hidden'); $('histBtn').classList.add('hidden');
       $('admin').classList.remove('hidden'); loadAdmin();
     }
+    try { const p0 = JSON.parse(store.get('places') || '[]'); if (Array.isArray(p0) && p0.length) places = p0; } catch (e) {}
     loadStatus();
+    flushOutbox();   // 지난번에 서버로 못 보낸 출퇴근이 있으면 지금 보냄
     warmPosition();
     // 다른 앱에 갔다가 돌아왔을 때도 다시 확인
     document.addEventListener('visibilitychange', () => {
