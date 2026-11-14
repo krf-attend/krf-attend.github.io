@@ -698,6 +698,16 @@
       return { ok: true };
     }
     if (r.del) return { ok: false, error: '이미 지운 기록이에요' };
+    if (d.op === 'cls') {   // 근무 구분: 이 출근으로 시작한 근무를 '정상' / '연장(대타)'으로 (비우면 자동). 출퇴근카드에서 씀
+      const cls = String(d.cls || '');
+      if (['', '정상', '연장'].indexOf(cls) < 0) return { ok: false, error: '근무 구분을 확인해 주세요' };
+      if (r.type !== '출근') return { ok: false, error: '근무 구분은 출근 기록에서 정해 주세요' };
+      if (cls === String(r.cls || '')) return { ok: false, error: '바뀐 내용이 없어요' };
+      batch.update(db.doc('records/' + id), { cls: cls, upd: now });
+      const lid = logDoc(batch, '근무구분 ' + (r.cls || '자동') + '→' + (cls || '자동'), e, r.type, r.wd, r.at, r.at, r.place, id);
+      await editCommit(batch, id, lid, r.no);
+      return { ok: true };
+    }
     if (d.expectAt && Number(d.expectAt) !== r.at) return { ok: false, error: '기록이 바뀌었어요. 다시 열어 주세요' };
     if (d.op === 'delete') {
       batch.update(db.doc('records/' + id), { del: true, delBy: myName(), delAt: now, sheet: false, upd: now });
@@ -746,7 +756,7 @@
   H.adminMonthRecs = async function (p) {
     if (!isAdmin()) return { ok: false, error: 'not admin' };
     const recs = (await monthRecs(p.month)).map((d) => ({ row: d.id, no: String(d.no), name: d.name || '', at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at),
-      type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), fix: !!d.fix }));
+      type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), fix: !!d.fix, cls: d.cls || '' }));
     const staff = (await allStaff()).map((e) => ({ no: String(e.no), name: e.name, dept: e.dept, shift: e.shift || '', status: e.status }));
     return { ok: true, month: p.month, recs: recs, staff: staff, places: await placeChoices(), me: myName() };
   };
@@ -841,7 +851,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 20:34';
+  const VER = '2026-11-15 01:00';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -1158,11 +1168,21 @@
     const items = D.recs.filter((r) => r.no === dk.no && r.wd === dk.wd).sort((a, b) => a.at - b.at);
     let h = '<div style="display:flex;align-items:center"><h2 style="flex:1">' + esc(nameOf(dk.no) || dk.no) + '</h2><button class="btn sm" data-act="closeDrawer">' + ic('x', 15) + '닫기</button></div>' +
       '<div class="sub">' + md(dk.wd) + ' 근무 · 값을 바꾸면 바로 저장돼요</div>';
+    const stf = (D.staff || []).filter((x) => String(x.no) === String(dk.no))[0];
+    // 근무 구분 (출근 줄마다): 자동이면 근무형태로 정한 결과를 보여 주고, 관리자가 정상/연장으로 바꿀 수 있음 (출퇴근카드에 반영)
+    const spD = splitShifts(items, [], stf ? stf.shift : ''), insD = items.filter((r) => r.type === '출근').sort((a, b) => a.at - b.at);
+    const clsSel = (r) => {
+      if (r.type !== '출근' || r.pend) return '<td></td>';
+      const auto = (spD.auto || [])[insD.indexOf(r)] || '정상', cur = r.cls || '';
+      return '<td><select data-c="cls" title="출퇴근카드에서 정상 근무는 출퇴근 칸, 연장 근무는 연장 칸에 들어가요 (연장은 지각·조퇴로 세지 않음)">' +
+        opt('', cur, '자동(' + auto + ')') + opt('정상', cur, '정상 근무') + opt('연장', cur, '연장(대타)') + '</select></td>';
+    };
     if (!items.length) h += '<div class="sub2" style="margin:8px 0">이 날 기록이 없어요</div>';
-    else h += '<table><tbody>' + items.map((r) => '<tr class="ed keep' + (r.pend ? ' pend' : '') + '" data-id="' + r.id + '">' + edCells(r) +
-      '<td><button class="btn sm no" data-act="del" title="지우기">' + ic('trash', 15) + '</button></td></tr>').join('') + '</tbody></table>';
+    else h += '<table><tbody>' + items.map((r) => '<tr class="ed keep' + (r.pend ? ' pend' : '') + '" data-id="' + r.id + '">' + edCells(r) + clsSel(r) +
+      '<td><button class="btn sm no" data-act="del" title="지우기">' + ic('trash', 15) + '</button></td></tr>').join('') + '</tbody></table>' +
+      (insD.length ? '<div class="sub2" style="margin:6px 0 0;font-size:12px">출근 줄의 \'자동\'은 직원 근무형태로 정한 거예요. 바꾸면 출퇴근카드의 출퇴근·연장 칸이 바뀌어요.</div>' : '');
     // 넣는 칸: 빠진 쪽과 시각을 미리 짐작 (오후 출근이면 야간으로 보고 퇴근은 다음날 아침)
-    const c = cellInfo(items, dk.wd), stf = (D.staff || []).filter((x) => String(x.no) === String(dk.no))[0];
+    const c = cellInfo(items, dk.wd);
     let g = { type: '출근', time: stf && stf.shift === '야간' ? '17:00' : '09:00', nd: false };   // 기록이 없는 날: 근무형태에 맞는 출근 시각
     if (c.ins.length && !c.outs.length) {
       const hh = Number(c.ins[0].time.slice(0, 2));
@@ -1561,6 +1581,8 @@
   // 하루에 출근이 두 번이면 직원의 '근무형태'(직원 화면)와 맞는 근무가 원래 근무(출퇴근 칸), 다른 하나가 대타(연장 칸)
   let cardNo = store.get('cardNo') || '';
   const hourOf = (r) => Number(r.time.slice(0, 2));
+  // 야간 근무인지: 퇴근이 다음날이면 야간, 같은 날이면 주간(오후에 늦게 나온 날도 주간). 퇴근이 아직 없으면 오후 4시 이후 출근을 야간으로
+  const isNightShift = (x) => (x.o ? x.o.day !== x.i.day : hourOf(x.i) >= 16);
   /** 그날 근무를 출근마다 나눠서 원래 근무(reg)와 대타(ext)로. extraOuts: 다른 날 줄에 들어간 이 근무들의 퇴근 후보 */
   function splitShifts(items, extraOuts, shift) {
     const ins = items.filter((r) => r.type === '출근').sort((a, b) => a.at - b.at);
@@ -1570,18 +1592,23 @@
       const next = k + 1 < ins.length ? ins[k + 1].at : Infinity, os = outs.filter((o) => o.at > r.at && o.at < next);
       return { i: r, o: os.length ? os[os.length - 1] : null };
     });
-    let reg = 0;
-    if (shift === '주간' || shift === '야간') {
-      const k = sh.findIndex((x) => (hourOf(x.i) >= 14) === (shift === '야간'));
-      if (k >= 0) reg = k;
-      else return { reg: { i: null, o: null }, ext: sh[0] };   // 그날 근무가 근무형태와 다른 근무 하나뿐 → 대타만 한 날 (연장 칸)
-    }
-    return { reg: sh[reg], ext: sh.filter((x, k) => k !== reg)[0] || null };
+    // 자동: 근무형태와 맞는 근무가 정상(없으면 그날은 대타만 한 날), 근무형태가 없으면 먼저 시작한 근무가 정상
+    let autoReg = 0;
+    if (shift === '주간' || shift === '야간') autoReg = sh.findIndex((x) => isNightShift(x) === (shift === '야간'));
+    // 관리자가 월간표에서 정한 근무 구분(정상/연장)이 있으면 그것이 우선.
+    // 정상으로 정한 근무가 있으면 나머지는 연장, 연장만 정했으면 나머지 중 하나(자동으로 정상이던 것, 없으면 먼저 시작한 것)가 정상
+    const mark = sh.map((x) => (x.i.cls === '정상' || x.i.cls === '연장' ? x.i.cls : ''));
+    let regK = mark.indexOf('정상');
+    if (regK < 0 && mark.some(Boolean) && autoReg >= 0) regK = !mark[autoReg] ? autoReg : mark.indexOf('');
+    else if (regK < 0) regK = autoReg;
+    const role = sh.map((x, k) => mark[k] || (k === regK ? '정상' : '연장'));
+    const reg = sh.filter((x, k) => role[k] === '정상')[0], ext = sh.filter((x, k) => role[k] === '연장')[0];
+    return { reg: reg || { i: null, o: null }, ext: ext || null, auto: role };
   }
   /** 원래 근무(reg)로 지각·조퇴 계산. before: 이날 원래 근무 출근 전에 찍힌 퇴근들(이어서 근무했는지 볼 때), prevItems: 전날 근무 */
   function cardDay(sp, wd, prevItems, carried, ownIns, shift) {
     const i = sp.reg.i, o = sp.reg.o, cr = carried || [];
-    const night = i ? hourOf(i) >= 14 : (o ? o.day !== wd : shift === '야간');
+    const night = i ? isNightShift(sp.reg) : (o ? o.day !== wd : shift === '야간');
     const start = kst(wd, night ? '17:00' : '09:00', false), end = kst(wd, night ? '09:00' : '18:00', night);
     // 대타 다음날: 전날 오후에 출근해서 이날 아침에 퇴근(밤샘)하고 이날 다시 주간 근무를 했으면 지각으로 세지 않음
     const prev = prevItems || [];
@@ -1886,6 +1913,18 @@
         if (sf.value === '퇴사' && !confirm(nm + '님을 퇴사로 바꿀까요?\n퇴사한 직원은 출퇴근을 찍을 수 없어요.')) { renderStaff(); return; }
         await staffDo(await call('adminDo', { op: 'status', no: no, value: sf.value }), nm + '님을 ' + sf.value + '(으)로 바꿨어요');
       } else await staffDo(await call('adminDo', { op: k, no: no, value: sf.checked ? '1' : '0' }), nm + '님의 ' + (k === 'admin' ? '관리자 권한' : '같이 찍기') + '을 ' + (sf.checked ? '켰어요' : '껐어요'));
+      return;
+    }
+    const cs = t.closest('[data-c="cls"]');
+    if (cs) {   // 근무 구분 (정상/연장/자동) 바꾸기
+      const tr = cs.closest('[data-id]'), rec = tr && recById(tr.dataset.id);
+      if (!rec) return;
+      const old = rec.cls || '', v = cs.value;
+      if (v === old) return;
+      enqueue({ op: 'cls', row: rec.row, no: rec.no, cls: v }, rec.name + ' ' + rec.wd.slice(5) + ' 근무 구분');
+      rec.cls = v; cache[ym] = D;
+      renderDrawer();
+      toast(rec.name + ' ' + rec.wd.slice(5) + ' ' + rec.time + ' 출근을 ' + (v === '정상' ? '정상 근무로' : v === '연장' ? '연장(대타)으로' : '자동으로') + ' 정했어요');
       return;
     }
     const el = t.closest('[data-f]');
