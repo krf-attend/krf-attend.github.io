@@ -172,7 +172,6 @@
   .atag.wait { background:#fff3e0; color:#b35a00; }
   .aempty { font-size:18px; color:#888; margin:4px 6px; }
   .astale { font-size:16px; font-weight:700; color:#8a6d00; background:#fff8db; border-radius:10px; padding:6px 10px; margin:4px 2px 8px; }
-  #adminBody.stale button:not([data-f]) { pointer-events:none; opacity:.45; }
   .afil { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 4px 6px; }
   .afil b { font-size:16px; color:#777; width:36px; }
   .afil .abtn { font-size:16px; padding:5px 11px; }
@@ -233,7 +232,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 13:20</div>
+    <div id="ver">화면 버전 2026-11-14 13:40</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -1050,12 +1049,13 @@
       else body.innerHTML = '<div class="aempty">불러오지 못했어요</div>';
       return;
     }
-    drawAdmin(d, false);
+    // 저장해 둔 내용과 같으면 다시 그리지 않음 (보던 화면이 흔들리지 않게). 버튼은 처음부터 바로 쓸 수 있음
+    if (!c || JSON.stringify(d) !== JSON.stringify(c)) drawAdmin(d, false); else setStale(false);
   }
   function drawAdmin(d, stale) {
     const body = $('adminBody');
     body.classList.toggle('stale', !!stale);
-    let h = (stale ? staleNote('🔄 최신 내용으로 바꾸는 중… (잠시 버튼이 막혀요)') : '') + '<div class="asec">등록 신청 (' + d.pending.length + ')</div>';
+    let h = '<div class="asec">등록 신청 (' + d.pending.length + ')</div>';
     if (!d.pending.length) h += '<div class="aempty">새 신청이 없어요</div>';
     d.pending.forEach((e) => {
       h += '<div class="acard"><span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + (e.req ? ' · ' + esc(e.req) : '') + '</span>' +
