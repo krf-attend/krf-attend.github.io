@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-15 01:00</div>
+    <div id="ver">화면 버전 2026-11-15 01:11</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -688,7 +688,7 @@
   H.adminRecords = async function (p) {
     if (!isAdmin()) return { ok: false, error: 'not admin' };
     const all = docs(await db.collection('records').where('month', '==', p.month).where('no', '==', String(p.no)).get());
-    const rec = (d) => ({ row: d.id, at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at), type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || '') });
+    const rec = (d) => ({ row: d.id, at: d.at, wd: d.wd, day: ymd(d.at), time: hm(d.at), type: d.type, place: d.place || '', how: d.how || '', nogps: d.lat == null && !/관리자 추가/.test(d.how || ''), cls: d.cls || '' });
     const records = all.filter((d) => !d.del).map(rec).sort((a, b) => b.at - a.at);
     const deleted = all.filter((d) => d.del).map((d) => Object.assign(rec(d), { log: d.id, by: d.delBy || '', when: d.delAt ? stamp(d.delAt) : '', full: true })).sort((a, b) => b.at - a.at);
     return { ok: true, records: records, deleted: deleted, places: await placeChoices() };
@@ -1782,13 +1782,15 @@
       const tgl = (op, on, label) => '<div class="srow"><span>' + label + '</span><button class="abtn tgl' + (on ? ' on' : '') + '" data-op="' + op + '" data-v="' + (on ? '0' : '1') + '"' + D + '>' + (on ? '켜짐' : '꺼짐') + '</button></div>';
       // 접힌 카드: 이름·부서·표시만. 누르면 펼쳐서 할 일을 묶음별로 보여 줌
       h += '<div class="acard scard' + (open ? ' open' : '') + '"><div class="shead" data-x="open" data-no="' + esc(e.no) + '">' +
-        '<span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.me ? ' · 나' : '') + '</span> ' +
+        '<span class="aname">' + esc(e.name) + '</span><span class="asub">' + esc(e.dept) + ' · ' + esc(e.no) + '번' + (e.shift ? ' · ' + esc(e.shift) : '') + (e.me ? ' · 나' : '') + '</span> ' +
         (e.status !== '재직' ? '<span class="atag" style="background:#eee;color:#666">' + esc(e.status) + '</span> ' : '') + tag + '<span class="chev">›</span></div>' +
         (!open ? '' : '<div class="sbody">' +
           '<div class="sgrp"><div class="sgl">근무 기록</div><div class="arow">' +
             '<button class="abtn" data-op="cal"' + D + '>📅 달력 보기</button><button class="abtn" data-op="records"' + D + '>✏️ 기록 고치기</button></div></div>' +
           '<div class="sgrp"><div class="sgl">재직 상태</div><div class="seg">' +
             ['재직', '휴직', '퇴사'].map((v) => '<button class="abtn' + (e.status === v ? ' sel' : '') + '" data-op="status" data-v="' + v + '"' + D + '>' + v + '</button>').join('') + '</div></div>' +
+          '<div class="sgrp"><div class="sgl">근무형태 <small style="font-weight:500;color:#888">(출퇴근카드에서 원래 근무는 출퇴근 칸, 대타는 연장 칸)</small></div><div class="seg">' +
+            ['주간', '야간'].map((v) => '<button class="abtn' + (e.shift === v ? ' sel' : '') + '" data-op="shift" data-v="' + v + '"' + D + '>' + v + ' 근무</button>').join('') + '</div></div>' +
           '<div class="sgrp"><div class="sgl">설정</div>' +
             tgl('mate', e.mate, '같이 찍기 버튼') +
             (d.super ? tgl('admin', e.admin, '관리자 권한') : '') +
@@ -1982,7 +1984,11 @@
         (r.nogps ? ' <span class="atag wait">📍 위치 없음</span>' : '') +
         (/관리자/.test(r.how) ? '<small>' + esc(r.how) + '</small>' : '') +
         '<div class="arow"><button class="abtn" data-ed="editform" data-time="' + esc(r.time) + '" data-nd="' + (nd ? 1 : 0) + '" data-place="' + esc(r.place) + '" data-type="' + esc(r.type) + '">고치기</button>' +
-        '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div><div class="edSlot"></div></div>';
+        '<button class="abtn no" data-ed="delete" data-desc="' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + esc(r.type) + ' ' + esc(r.time) + '">지우기</button></div>' +
+        // 근무 구분 (출근 줄만): 자동이면 근무형태로 정하고, 정상/연장을 고르면 출퇴근카드의 출퇴근·연장 칸이 그대로 따름
+        (r.type === '출근' && r.row && !r.pending ? '<div class="asub" style="margin:8px 0 2px">근무 구분 (출퇴근카드의 출퇴근·연장 칸)</div><div class="arow edCls">' +
+          [['', '자동'], ['정상', '정상 근무'], ['연장', '연장(대타)']].map((c) => '<button class="abtn' + ((r.cls || '') === c[0] ? ' sel' : '') + '" data-ed="cls" data-v="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' : '') +
+        '<div class="edSlot"></div></div>';
     }).join('');
     edFocusShow();
   }
@@ -2070,6 +2076,11 @@
       if (i < 0) return edCallOnline(payload);
       desc = d.records[i].wd.slice(5) + ' ' + d.records[i].type + ' ' + d.records[i].time + ' 지우기';
       d.records.splice(i, 1);
+    } else if (p.op === 'cls') {
+      const r = d.records.find((x) => String(x.at) === String(p.expectAt));
+      if (!r) return edCallOnline(payload);
+      desc = r.wd.slice(5) + ' ' + r.time + ' 출근 근무 구분 → ' + (p.cls === '정상' ? '정상 근무' : p.cls === '연장' ? '연장(대타)' : '자동');
+      r.cls = p.cls; r.pending = true;
     } else if (p.op === 'restore') {
       const i = (d.deleted || []).findIndex((x) => String(x.log) === String(p.log));
       if (i < 0) return edCallOnline(payload);
@@ -2159,6 +2170,11 @@
         edCall({ op: 'edit', row: rec.dataset.row, expectAt: rec.dataset.at, time: t, nextDay: nd, place: pl, type: ty });
         return;
       }
+      if (k === 'cls') {   // 근무 구분 바꾸기 (바로 저장)
+        if (eb.classList.contains('sel')) return;
+        edCall({ op: 'cls', row: rec.dataset.row, expectAt: rec.dataset.at, cls: eb.dataset.v || '' });
+        return;
+      }
       if (k === 'restore') {
         if (!confirm(edName + '님 ' + eb.dataset.desc + ' 기록을 되살릴까요?')) return;
         edCall({ op: 'restore', log: eb.dataset.log });
@@ -2185,7 +2201,7 @@
     if (op === 'missing') { misYM = ''; openMissing(); return; }
     if (op === 'records') { edYM = ''; edBackCal = null; edBackMis = false; edAddPre = null; edFocus = ''; openRecords(no, nm); return; }
     if (op === 'cal') { openHist(no, nm); return; }
-    if (op === 'status' && b.classList.contains('sel')) return;
+    if ((op === 'status' || op === 'shift') && b.classList.contains('sel')) return;
     const ask = op === 'reject' ? nm + '님 등록 신청을 거절할까요?' : op === 'reset' ? nm + '님 휴대폰 등록을 지울까요?\n(새 휴대폰에서 다시 이름을 고르면 됩니다)' :
       op === 'status' && v !== '재직' ? nm + '님을 ' + v + '(으)로 바꿀까요?' :
       op === 'admin' ? nm + '님을 관리자' + (v === '1' ? '로 지정할까요?' : '에서 해제할까요?') :
