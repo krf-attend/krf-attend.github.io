@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 18:45</div>
+    <div id="ver">화면 버전 2026-11-14 19:25</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -823,40 +823,26 @@
     const st = (await allStaff()).filter((e) => e.status !== '퇴사');
     // 찍은 날짜 기준: 지난달 마지막 날 야간 근무의 이달 1일 아침 퇴근도 이달 1일 칸에 (그래서 지난달 기록도 받음)
     const recs = (await monthRecs(ym)).concat(await monthRecs(prevMonth(ym))).filter((d) => ymd(d.at).slice(0, 7) === ym && (place === '전체' || d.place === place));
+    // 직원별 · 찍은 날짜별 출근 시각들, 퇴근 시각들 (예전 근태기록표처럼 출근 줄과 퇴근 줄을 따로)
     const by = {};
     recs.forEach((d) => {
       let t = d.at;
       const h = kParts(t).h;
       if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl) t += (18 - h) * 3600 * 1000;
       const day = ymd(d.at);   // 근무일이 아니라 찍은 날짜 칸에
-      ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || []).push(t);
+      const c = ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || { i: [], o: [] });
+      c[d.type === '출근' ? 'i' : 'o'].push(t);
     });
-    const blank = () => new Array(DAYS).fill('');
-    const rows = [], bg = [], fw = [], al = [], merges = [];
-    const push = (r, b, f, a) => { rows.push(r); bg.push(b || new Array(DAYS).fill('#ffffff')); fw.push(f || new Array(DAYS).fill('normal')); al.push(a || new Array(DAYS).fill('center')); };
-    const r0 = blank(); r0[0] = '근태기록표'; push(r0, null, new Array(DAYS).fill('bold')); merges.push([0, 0, 1, DAYS]);
-    push(blank());
-    const r2 = blank(), b2 = new Array(DAYS).fill('#ffffff'), f2 = new Array(DAYS).fill('normal');
-    r2[0] = '출근 월'; r2[2] = ym; r2[6] = '장소'; r2[8] = place;
-    r2[12] = y + '/' + pad(m) + '/01 ~ ' + pad(m) + '/' + pad(last) + '   ( ' + (place === '전체' ? 'krf센터' : place) + ' )';
-    [2, 3, 4, 8, 9, 10].forEach((c) => { b2[c] = '#fff2cc'; }); [0, 2, 6, 8].forEach((c) => { f2[c] = 'bold'; });
-    push(r2, b2, f2); merges.push([2, 0, 1, 2], [2, 2, 1, 3], [2, 6, 1, 2], [2, 8, 1, 3], [2, 12, 1, DAYS - 12]);
-    const r3 = blank(); r3[0] = '※ 16:00~17:59 퇴근은 18시대 근무 인정 시각으로 표시합니다 (16시대 +2시간, 17시대 +1시간 / 원본은 기록 그대로). 보정하지 않을 기록은 \'기록\' 탭의 \'보정제외\'를 체크하세요.';
-    push(r3, null, null, new Array(DAYS).fill('left')); merges.push([3, 0, 1, DAYS]);
-    st.forEach((e) => {
-      const day = blank(), info = blank(), times = blank(), k = rows.length;
-      for (let d = 1; d <= last; d++) {
-        day[d - 1] = String(d);
-        const list = ((by[String(e.no)] || {})[ym + '-' + pad(d)] || []).sort((a, b) => a - b);
-        times[d - 1] = list.map(hm).join('\n');
+    const people = st.map((e) => {
+      const ins = [], outs = [];
+      for (let d = 1; d <= DAYS; d++) {
+        const c = d <= last ? (by[String(e.no)] || {})[ym + '-' + pad(d)] : null;
+        ins.push(c ? c.i.sort((a, b) => a - b).map(hm).join('\n') : '');
+        outs.push(c ? c.o.sort((a, b) => a - b).map(hm).join('\n') : '');
       }
-      info[0] = '사원번호'; info[2] = String(e.no); info[8] = '성명'; info[10] = e.name; info[18] = '부서'; info[20] = e.dept || '';
-      push(day, new Array(DAYS).fill('#f3f3f3'), new Array(DAYS).fill('bold'));
-      push(info, new Array(DAYS).fill('#dbe5f1'));
-      push(times);
-      merges.push([k + 1, 0, 1, 2], [k + 1, 2, 1, 6], [k + 1, 8, 1, 2], [k + 1, 10, 1, 8], [k + 1, 18, 1, 2], [k + 1, 20, 1, DAYS - 20]);
+      return { no: String(e.no), name: e.name, dept: e.dept || '', ins: ins, outs: outs };
     });
-    return { ok: true, month: ym, place: place, places: placesList, fixed: false, fromDb: true, rows: rows, bg: bg, fw: fw, al: al, merges: merges, widths: new Array(DAYS).fill(44), hidden: [] };
+    return { ok: true, month: ym, place: place, places: placesList, fixed: false, fromDb: true, last: last, people: people };
   };
 
   /* ───────── 바깥에서 쓰는 것 ───────── */
