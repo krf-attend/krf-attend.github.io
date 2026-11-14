@@ -175,17 +175,19 @@
 <div id="app" class="hidden">
   <aside>
     <div class="brand"><div class="logo" data-ic="clock" data-s="20"></div><div><b>KRF 출퇴근</b><small>관리 화면</small></div></div>
-    <div class="grp" style="padding-top:2px">출퇴근</div>
+    <div class="grp" style="padding-top:2px">현황</div>
     <button class="nav" data-view="today"><span data-ic="home"></span>오늘 현황</button>
     <button class="nav" data-view="grid"><span data-ic="calendar"></span>월간 표</button>
-    <button class="nav" data-view="list"><span data-ic="list"></span>기록</button>
-    <button class="nav" data-view="miss"><span data-ic="alert"></span>빠진 기록<span class="n hidden" id="missN"></span></button>
-    <button class="nav" data-view="log"><span data-ic="history"></span>수정 이력</button>
+    <div class="grp">보고서</div>
+    <button class="nav" data-view="sheet"><span data-ic="sheet"></span>근태기록표</button>
+    <button class="nav" data-view="card"><span data-ic="card"></span>출퇴근카드</button>
     <div class="grp">관리</div>
     <button class="nav" data-view="staff"><span data-ic="users"></span>직원</button>
     <button class="nav" data-view="place"><span data-ic="pin"></span>장소</button>
-    <button class="nav" data-view="sheet"><span data-ic="sheet"></span>근태기록표</button>
-    <button class="nav" data-view="card"><span data-ic="card"></span>출퇴근카드</button>
+    <div class="grp">기록</div>
+    <button class="nav" data-view="miss"><span data-ic="alert"></span>빠진 기록<span class="n hidden" id="missN"></span></button>
+    <button class="nav" data-view="list"><span data-ic="list"></span>전체 기록</button>
+    <button class="nav" data-view="log"><span data-ic="history"></span>수정 이력</button>
     <div class="foot">
       <div id="who" style="color:#333d4b;font-weight:600"></div>
       <div id="ver"></div>
@@ -753,13 +755,15 @@
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate(), DAYS = 31;
     const pl = await placeChoices(), placesList = ['전체'].concat(pl);
     const st = (await allStaff()).filter((e) => e.status !== '퇴사');
-    const recs = (await monthRecs(ym)).filter((d) => place === '전체' || d.place === place);
+    // 찍은 날짜 기준: 지난달 마지막 날 야간 근무의 이달 1일 아침 퇴근도 이달 1일 칸에 (그래서 지난달 기록도 받음)
+    const recs = (await monthRecs(ym)).concat(await monthRecs(prevMonth(ym))).filter((d) => ymd(d.at).slice(0, 7) === ym && (place === '전체' || d.place === place));
     const by = {};
     recs.forEach((d) => {
       let t = d.at;
       const h = kParts(t).h;
       if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl) t += (18 - h) * 3600 * 1000;
-      ((by[d.no] = by[d.no] || {})[d.wd] = by[d.no][d.wd] || []).push(t);
+      const day = ymd(d.at);   // 근무일이 아니라 찍은 날짜 칸에
+      ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || []).push(t);
     });
     const blank = () => new Array(DAYS).fill('');
     const rows = [], bg = [], fw = [], al = [], merges = [];
@@ -821,7 +825,7 @@
 (function () {
   'use strict';
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-14 17:37';
+  const VER = '2026-11-14 18:45';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -911,7 +915,7 @@
     return out;
   }
 
-  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', sheet: '근태기록표', card: '출퇴근카드' };
+  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '전체 기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', sheet: '근태기록표', card: '출퇴근카드' };
   const MONTHLY = { grid: 1, list: 1, miss: 1, log: 1, sheet: 1, card: 1 }, HAS_CSV = { grid: 1, list: 1, miss: 1, log: 1, staff: 1, place: 1, sheet: 1 };
   let ym = ymStr(new Date()), view = TITLE[store.get('pcView')] ? store.get('pcView') : 'grid', D = null, loadSeq = 0, idSeq = 0;
   const needD = () => view === 'grid' || view === 'list' || view === 'miss' || view === 'card';
@@ -1417,9 +1421,14 @@
       const c = items.length ? cardDay(items, wd) : null;
       if (c) { work++; if (c.late) { lateN++; lateM += c.late; } if (c.early) { earlyN++; earlyM += c.early; } }
       const tm = (r, cls) => r ? '<span class="' + cls + '">' + esc(r.time) + (r.fix ? '*' : '') + '</span>' + (r.day !== wd ? '<span class="nd"> 다음날</span>' : '') : '';
+      // 퇴근은 찍은 날짜 줄에 보여 줌: 그날 근무의 퇴근 + 전날 야간 근무의 다음날 아침 퇴근 (달 마지막 날 근무의 다음날 퇴근만 마지막 줄에 '다음날'로)
+      const prevWd = d > 1 ? ym + '-' + String(d - 1).padStart(2, '0') : '';
+      const outsHere = items.filter((r) => r.type === '퇴근' && (r.day === wd || d === last))
+        .concat(prevWd ? (by[prevWd] || []).filter((r) => r.type === '퇴근' && r.day === wd) : []).sort((a, b) => a.at - b.at);
+      const oShow = outsHere.length ? outsHere[outsHere.length - 1] : null;
       const rm = !c ? '' : !c.i ? '출근 기록 없음' : !c.o ? (wd === todayStr() ? '' : '퇴근 기록 없음') : '';
       rows += '<tr><td class="' + (w === 0 ? 'sun' : w === 6 ? 'sat' : '') + '">' + String(d).padStart(2, '0') + ' ' + WEEK[w] + '</td>' +
-        '<td colspan="2">' + (c ? tm(c.i, 'ti') : '') + '</td><td colspan="2">' + (c ? tm(c.o, 'to') : '') + '</td>' +
+        '<td colspan="2">' + (c ? tm(c.i, 'ti') : '') + '</td><td colspan="2">' + tm(oShow, 'to') + '</td>' +
         (rm ? '<td colspan="4" class="rm bad">' + rm + '</td>' : '<td></td><td></td><td></td><td></td>') + '</tr>';
     }
     return '<div class="kcard"><h1>출퇴근카드</h1>' +
