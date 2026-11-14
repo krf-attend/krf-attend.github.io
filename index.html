@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-14 17:37</div>
+    <div id="ver">화면 버전 2026-11-14 18:45</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -821,13 +821,15 @@
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate(), DAYS = 31;
     const pl = await placeChoices(), placesList = ['전체'].concat(pl);
     const st = (await allStaff()).filter((e) => e.status !== '퇴사');
-    const recs = (await monthRecs(ym)).filter((d) => place === '전체' || d.place === place);
+    // 찍은 날짜 기준: 지난달 마지막 날 야간 근무의 이달 1일 아침 퇴근도 이달 1일 칸에 (그래서 지난달 기록도 받음)
+    const recs = (await monthRecs(ym)).concat(await monthRecs(prevMonth(ym))).filter((d) => ymd(d.at).slice(0, 7) === ym && (place === '전체' || d.place === place));
     const by = {};
     recs.forEach((d) => {
       let t = d.at;
       const h = kParts(t).h;
       if (d.type === '퇴근' && h >= 16 && h < 18 && !d.excl) t += (18 - h) * 3600 * 1000;
-      ((by[d.no] = by[d.no] || {})[d.wd] = by[d.no][d.wd] || []).push(t);
+      const day = ymd(d.at);   // 근무일이 아니라 찍은 날짜 칸에
+      ((by[d.no] = by[d.no] || {})[day] = by[d.no][day] || []).push(t);
     });
     const blank = () => new Array(DAYS).fill('');
     const rows = [], bg = [], fw = [], al = [], merges = [];
