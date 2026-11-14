@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>KRF출퇴근 관리 (PC)</title>
+<link rel="icon" href="icon-192.png">
+<style>
+  :root { --bg:#f6f7f9; --line:#dde1e6; --ink:#222; --sub:#6b7280; --btn:#1f6fdc; --ok:#1e8e3e; --out:#b35a00; --bad:#c0392b; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { font-family:-apple-system, 'Malgun Gothic', 'Noto Sans KR', sans-serif; color:var(--ink); background:var(--bg); font-size:15px; }
+  .hidden { display:none !important; }
+  button, select, input { font:inherit; }
+  button { cursor:pointer; }
+  /* 연결 화면 */
+  #pair { height:100%; display:flex; align-items:center; justify-content:center; }
+  #pair .box { background:#fff; border-radius:16px; padding:36px 44px; text-align:center; box-shadow:0 4px 24px rgba(0,0,0,.08); max-width:520px; }
+  #pair h1 { margin:0 0 8px; font-size:24px; }
+  #code { font-size:64px; font-weight:800; letter-spacing:6px; margin:18px 0; color:var(--btn); }
+  #pair ol { text-align:left; line-height:1.9; color:#444; margin:0; padding-left:22px; }
+  /* 본 화면 */
+  #app { height:100%; display:flex; }
+  aside { width:176px; background:#1d2733; color:#fff; display:flex; flex-direction:column; padding:16px 10px; flex:none; }
+  aside h1 { font-size:18px; margin:4px 8px 18px; }
+  aside .nav { display:block; width:100%; text-align:left; background:none; border:none; color:#cfd6df; padding:11px 12px; border-radius:8px; font-size:16px; font-weight:700; }
+  aside .nav.sel { background:#31465c; color:#fff; }
+  aside .nav:hover { background:#28384a; }
+  aside .foot { margin-top:auto; font-size:12px; color:#8fa0b3; line-height:1.7; padding:0 8px; }
+  aside .foot button { background:none; border:none; color:#8fa0b3; text-decoration:underline; padding:0; font-size:12px; }
+  main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .bar { display:flex; align-items:center; gap:8px; padding:10px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .bar b#ym { font-size:20px; min-width:120px; text-align:center; }
+  .btn { background:#fff; border:1px solid #b9c0c9; border-radius:8px; padding:6px 12px; font-weight:700; color:#333; }
+  .btn:hover { background:#f0f3f6; }
+  .btn.go { background:var(--btn); border-color:var(--btn); color:#fff; }
+  .btn.no { color:var(--bad); border-color:#e0a9a2; }
+  .btn:disabled { opacity:.4; cursor:default; }
+  .bar select, .bar input[type=text] { border:1px solid #b9c0c9; border-radius:8px; padding:6px 8px; background:#fff; }
+  .sp { flex:1; }
+  #stat { font-size:13px; color:var(--sub); }
+  #stat.busy { color:#8a6d00; font-weight:700; }
+  #view { flex:1; overflow:auto; padding:12px 16px 24px; }
+  .empty { padding:60px; text-align:center; color:var(--sub); font-size:17px; }
+  table { border-collapse:separate; border-spacing:0; background:#fff; }
+  th, td { border-right:1px solid var(--line); border-bottom:1px solid var(--line); padding:4px 6px; }
+  thead th { position:sticky; top:-12px; background:#eef1f5; z-index:2; font-size:13px; border-top:1px solid var(--line); }
+  th small, td small { display:block; font-weight:400; color:var(--sub); font-size:11px; }
+  /* 월간 표 */
+  .grid th.st { position:sticky; left:-16px; z-index:1; background:#fff; text-align:left; min-width:92px; border-left:1px solid var(--line); white-space:nowrap; }
+  .grid thead th.st { z-index:3; background:#eef1f5; }
+  .grid td.c { min-width:52px; height:46px; text-align:center; font-size:12.5px; font-weight:700; cursor:pointer; vertical-align:middle; line-height:1.5; white-space:nowrap; }
+  .grid td.c:hover { background:#eef5ff; }
+  .grid td.c.sel { outline:2px solid var(--btn); outline-offset:-2px; background:#eef5ff; }
+  .grid .we { background:#fafafa; }
+  .grid .sun { color:#c0392b; } .grid .sat { color:#1f5fbf; }
+  .grid th.today { background:#dbe9ff; }
+  .in { color:var(--ok); } .out { color:var(--out); } .miss { color:var(--bad); font-size:11.5px; }
+  .more { font-size:10px; color:var(--sub); font-weight:400; }
+  .grid td.tot { text-align:center; font-weight:700; white-space:nowrap; font-size:13px; }
+  .leg { margin-top:10px; font-size:12.5px; color:var(--sub); display:flex; gap:14px; flex-wrap:wrap; }
+  .leg i { display:inline-block; width:16px; height:4px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+  /* 기록 표 */
+  .list { width:100%; }
+  .list th { text-align:left; cursor:pointer; white-space:nowrap; }
+  .list td { font-size:14px; white-space:nowrap; }
+  .list td.how { white-space:normal; font-size:12px; color:var(--sub); max-width:340px; }
+  .list tr:hover td { background:#f7faff; }
+  .ed select, .ed input[type=time] { border:1px solid transparent; border-radius:6px; padding:3px 4px; background:transparent; }
+  .ed select:hover, .ed input[type=time]:hover, .ed select:focus, .ed input[type=time]:focus { border-color:#8fb2e8; background:#fff; }
+  .ed.pend td { background:#fffbe6; }
+  .tag { font-size:11px; background:#fff3cd; color:#8a6d00; border-radius:6px; padding:1px 6px; margin-left:4px; }
+  /* 옆 칸(하루 기록) */
+  #drawer { width:440px; background:#fff; border-left:1px solid var(--line); padding:16px; overflow:auto; flex:none; }
+  #drawer td, label { white-space:nowrap; }
+  #drawer td { padding:4px 3px; }
+  #drawer td .btn { padding:5px 8px; }
+  #drawer h2 { margin:0 0 4px; font-size:19px; }
+  #drawer .sub { color:var(--sub); font-size:13px; margin-bottom:12px; }
+  #drawer table { width:100%; }
+  #drawer td { font-size:14px; }
+  #drawer .addbox { margin-top:16px; padding:12px; background:#f3f7fd; border-radius:10px; }
+  #drawer .addbox b { display:block; margin-bottom:8px; }
+  #drawer .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  #drawer .row select, #drawer .row input[type=time] { border:1px solid #b9c0c9; border-radius:8px; padding:5px 6px; background:#fff; }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#1d2733; color:#fff; padding:10px 16px; border-radius:10px; font-size:14px; z-index:9; display:flex; gap:12px; align-items:center; }
+  #toast button { background:none; border:none; color:#9cc4ff; font-weight:700; text-decoration:underline; }
+</style>
+</head>
+<body>
+<div id="pair" class="hidden">
+  <div class="box">
+    <h1>이 PC를 관리 화면으로 연결</h1>
+    <div style="color:#666">관리자 휴대폰에서 아래 숫자를 넣어 주세요</div>
+    <div id="code">······</div>
+    <ol>
+      <li>휴대폰에서 KRF출퇴근 앱의 <b>관리자 화면</b>을 엽니다</li>
+      <li><b>💻 PC 연결</b>을 누릅니다</li>
+      <li>위 숫자 여섯 자리를 넣습니다</li>
+    </ol>
+    <div style="margin-top:16px;color:#888;font-size:13px">연결되면 이 화면이 저절로 바뀝니다 · <a href="index.html?m=1">휴대폰 화면 보기</a></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <aside>
+    <h1>KRF출퇴근<br>관리</h1>
+    <button class="nav" data-view="grid">📅 월간 표</button>
+    <button class="nav" data-view="list">📋 기록</button>
+    <div class="foot">
+      <div id="who"></div>
+      <div id="ver"></div>
+      <button data-act="leave">이 PC 연결 끊기</button><br>
+      <a href="index.html?m=1" style="color:#8fa0b3">휴대폰 화면 보기</a>
+    </div>
+  </aside>
+  <main>
+    <div class="bar">
+      <button class="btn" data-act="prev">◀</button>
+      <b id="ym"></b>
+      <button class="btn" data-act="next" id="nextBtn">▶</button>
+      <button class="btn" data-act="now">이번 달</button>
+      <span id="filters" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></span>
+      <span class="sp"></span>
+      <span id="stat"></span>
+      <button class="btn" data-act="reload">새로 고침</button>
+      <button class="btn" data-act="csv">엑셀로 내려받기</button>
+    </div>
+    <div id="view"></div>
+  </main>
+  <div id="drawer" class="hidden"></div>
+</div>
+<div id="toast" class="hidden"></div>
+
+<script>
+(function () {
+  'use strict';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
+  const VER = '2026-11-14 11:32';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  // 휴대폰 앱과 같은 방식의 기기 번호 (이 브라우저를 한 대의 기기로 봄)
+  let deviceId = store.get('deviceId');
+  if (!deviceId) {
+    deviceId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    store.set('deviceId', deviceId);
+  }
+  async function api(action, payload) {
+    const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: action }, payload)) });
+    return res.json();
+  }
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  const ymStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  const dStr = (d) => ymStr(d) + '-' + String(d.getDate()).padStart(2, '0');
+  const todayStr = () => dStr(new Date());
+  const nextDay = (wd) => { const d = new Date(wd + 'T00:00:00'); d.setDate(d.getDate() + 1); return dStr(d); };
+  const kst = (wd, time, nd) => Date.parse(wd + 'T' + time + ':00+09:00') + (nd ? 86400000 : 0);
+  function hm(ms) {
+    const m = Math.round(ms / 60000), h = Math.floor(m / 60), r = m % 60;
+    return (h ? h + '시간 ' : '') + (r ? r + '분' : (h ? '' : '0분'));
+  }
+  const HIST_FIX = { '인용홀': '#1f5fbf', '순국': '#00897b', '기억': '#8e44ad', '외부': '#6d4c41' }, HIST_PAL = ['#c2185b', '#f39c12', '#5d6d7e', '#2e7d32'];
+  function placeColor(p) {
+    if (HIST_FIX[p]) return HIST_FIX[p];
+    let h = 0; for (let i = 0; i < p.length; i++) h = (h * 31 + p.charCodeAt(i)) >>> 0;
+    return HIST_PAL[h % HIST_PAL.length];
+  }
+  function pairs(items) {
+    const out = []; let open = null;
+    items.forEach((it) => {
+      if (it.type === '출근') { if (open) out.push({ in: open }); open = it; }
+      else if (open) { out.push({ in: open, out: it }); open = null; }
+      else out.push({ out: it });
+    });
+    if (open) out.push({ in: open });
+    return out;
+  }
+
+  let ym = ymStr(new Date()), view = store.get('pcView') === 'list' ? 'list' : 'grid', D = null, loadSeq = 0, idSeq = 0;
+  const cache = {};
+  let fil = { no: '', type: '', place: '', fix: false }, sort = { k: 'wd', dir: -1 }, dk = null;
+
+  // ── 연결(휴대폰 승인) ──
+  let pairTimer = null;
+  async function boot() {
+    clearTimeout(pairTimer);
+    let d; try { d = await api('pcStart', { deviceId: deviceId }); } catch (e) { d = null; }
+    if (d && d.ok && d.done) {
+      $('pair').classList.add('hidden'); $('app').classList.remove('hidden');
+      $('ver').textContent = '화면 버전 ' + VER;
+      load();
+      return;
+    }
+    $('app').classList.add('hidden'); $('pair').classList.remove('hidden');
+    $('code').textContent = (d && d.ok && d.code) ? d.code.slice(0, 3) + ' ' + d.code.slice(3) : '연결 중…';
+    pairTimer = setTimeout(boot, 3000);
+  }
+
+  // ── 한 달 치 받기 ──
+  function setYm() {
+    const [y, m] = ym.split('-').map(Number);
+    $('ym').textContent = y + '년 ' + m + '월';
+    $('nextBtn').disabled = ym >= ymStr(new Date());
+    document.querySelectorAll('aside .nav').forEach((b) => b.classList.toggle('sel', b.dataset.view === view));
+  }
+  async function load(silent) {
+    const seq = ++loadSeq, m = ym;
+    setYm();
+    if (cache[m]) { D = cache[m]; render(); }
+    else if (!silent) { D = null; closeDrawer(); $('filters').innerHTML = ''; $('view').innerHTML = '<div class="empty">불러오는 중…</div>'; }
+    let d; try { d = await api('adminMonthRecs', { deviceId: deviceId, month: m }); } catch (e) { d = null; }
+    if (seq !== loadSeq) return;
+    if (d && !d.ok && d.error === 'not admin') { boot(); return; }
+    if (!d || !d.ok) {
+      if (!cache[m]) $('view').innerHTML = '<div class="empty">불러오지 못했어요. 인터넷 연결을 확인하고 [새로 고침]을 눌러 주세요</div>';
+      return;
+    }
+    if (busy || q.length) return;                    // 저장 중이면 화면(고친 내용)을 그대로 둠
+    d.recs.forEach((r) => { r.id = 'r' + (++idSeq); });
+    cache[m] = d; D = d;
+    $('who').textContent = d.me || '';
+    render();
+  }
+
+  // ── 저장: 화면에 먼저 반영하고 서버에는 차례로 보냄 ──
+  let q = [], busy = false, needReload = false;
+  function stat() {
+    const on = busy || q.length;
+    $('stat').textContent = on ? '저장 중…' : '모두 저장됨 ✓';
+    $('stat').classList.toggle('busy', !!on);
+  }
+  function enqueue(p, desc) { q.push({ p: p, desc: desc }); stat(); pump(); }
+  async function pump() {
+    if (busy) return;
+    busy = true;
+    while (q.length) {
+      const it = q.shift(); stat();
+      let r = null; try { r = await api('adminEdit', Object.assign({ deviceId: deviceId }, it.p)); } catch (e) { r = null; }
+      if (!r || !r.ok) {
+        q = []; busy = false; needReload = false; stat();
+        alert('저장하지 못했어요: ' + it.desc + '\n' + ((r && r.error) || '인터넷 연결을 확인해 주세요') + '\n\n화면을 서버 내용으로 다시 맞춥니다.');
+        delete cache[ym]; load();
+        return;
+      }
+    }
+    busy = false; stat();
+    if (needReload) { needReload = false; load(true); }
+  }
+  window.addEventListener('beforeunload', (e) => { if (busy || q.length) { e.preventDefault(); e.returnValue = ''; } });
+
+  let toastTimer = null;
+  function toast(msg, undo) {
+    const t = $('toast');
+    t.innerHTML = '<span>' + esc(msg) + '</span>' + (undo ? '<button data-act="undo">되돌리기</button>' : '');
+    t._undo = undo || null;
+    t.classList.remove('hidden');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 6000);
+  }
+
+  const recById = (id) => D && D.recs.filter((r) => r.id === id)[0];
+  const nameOf = (no) => { const s = D.staff.filter((x) => x.no === String(no))[0]; return s ? s.name : ''; };
+  function saveEdit(rec, v, quiet) {
+    const old = { type: rec.type, time: rec.time, nd: rec.day !== rec.wd, place: rec.place };
+    if (v.type === old.type && v.time === old.time && v.nd === old.nd && v.place === old.place) return true;
+    if (!/^\d{2}:\d{2}$/.test(v.time)) { alert('시각을 확인해 주세요'); return false; }
+    const moved = v.time !== old.time || v.nd !== old.nd;
+    const at = moved ? kst(rec.wd, v.time, v.nd) : rec.at;
+    if (at > Date.now()) { alert('앞으로의 시각은 넣을 수 없어요'); return false; }
+    enqueue({ op: 'edit', row: rec.row, expectAt: rec.at, no: rec.no, time: v.time, nextDay: v.nd, place: v.place !== old.place ? v.place : '', type: v.type },
+      rec.name + ' ' + rec.wd.slice(5) + ' ' + v.type + ' ' + v.time);
+    rec.type = v.type; rec.time = v.time; rec.place = v.place; rec.at = at; rec.day = v.nd ? nextDay(rec.wd) : rec.wd;
+    if (!/관리자 수정/.test(rec.how)) rec.how += ' → 관리자 수정';
+    if (!quiet) toast(rec.name + ' ' + rec.wd.slice(5) + ' 기록을 고쳤어요', () => { saveEdit(rec, old, true); render(); });
+    return true;
+  }
+  function delRec(rec) {
+    if (!confirm(rec.name + '님 ' + rec.wd.slice(5) + ' ' + rec.type + ' ' + rec.time + ' 기록을 지울까요?\n(지운 기록은 수정이력에 남고, 휴대폰 앱의 기록 고치기에서 되살릴 수 있어요)')) return;
+    enqueue({ op: 'delete', row: rec.row, expectAt: rec.at, no: rec.no }, rec.name + ' ' + rec.wd.slice(5) + ' ' + rec.type + ' 지우기');
+    D.recs = D.recs.filter((r) => r !== rec);
+    D.recs.forEach((r) => { if (rec.row && r.row > rec.row) r.row--; });
+    cache[ym] = D;
+    render();
+  }
+  function addRec(no, wd, v) {
+    if (!/^\d{2}:\d{2}$/.test(v.time)) { alert('시각을 넣어 주세요'); return; }
+    if (!v.place) { alert('장소를 골라 주세요'); return; }
+    const at = kst(wd, v.time, v.nd);
+    if (at > Date.now()) { alert('앞으로의 시각은 넣을 수 없어요'); return; }
+    enqueue({ op: 'add', no: no, wd: wd, type: v.type, time: v.time, nextDay: v.nd, place: v.place }, nameOf(no) + ' ' + wd.slice(5) + ' ' + v.type + ' 넣기');
+    D.recs.push({ id: 'r' + (++idSeq), row: 0, no: String(no), name: nameOf(no), at: at, wd: wd, day: v.nd ? nextDay(wd) : wd, time: v.time,
+                  type: v.type, place: v.place, how: '관리자 추가', nogps: false, fix: false, pend: true });
+    needReload = true;                               // 줄 번호를 받으려고 저장이 끝나면 한 번 새로 받음
+    render();
+    toast(nameOf(no) + ' ' + wd.slice(5) + ' ' + v.type + ' ' + v.time + ' 기록을 넣었어요');
+  }
+
+  // ── 한 줄 고치는 칸 (월간 표의 옆 칸과 기록 표가 같이 씀): 값을 바꾸면 바로 저장 ──
+  const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label == null ? v : label) + '</option>';
+  function placeSel(cur, attr) {
+    const list = D.places.slice();
+    if (cur && list.indexOf(cur) < 0) list.unshift(cur);
+    return '<select ' + attr + '>' + (cur ? '' : opt('', '', '장소 고르기')) + list.map((p) => opt(p, cur)).join('') + '</select>';
+  }
+  function edCells(r) {
+    return '<td><select data-f="type">' + opt('출근', r.type) + opt('퇴근', r.type) + '</select></td>' +
+      '<td><input type="time" data-f="time" value="' + esc(r.time) + '">' + (r.fix ? '<span title="관리자가 보정한 시각">*</span>' : '') + '</td>' +
+      '<td><label title="근무일 다음 날에 찍은 기록"><input type="checkbox" data-f="nd"' + (r.day !== r.wd ? ' checked' : '') + '> 다음날</label></td>' +
+      '<td>' + placeSel(r.place, 'data-f="place"') + '</td>';
+  }
+  function readRow(tr) {
+    return { type: tr.querySelector('[data-f="type"]').value, time: tr.querySelector('[data-f="time"]').value,
+             nd: tr.querySelector('[data-f="nd"]').checked, place: tr.querySelector('[data-f="place"]').value };
+  }
+
+  // ── 월간 표 ──
+  function byNoWd() {
+    const by = {};
+    D.recs.forEach((r) => { const a = (by[r.no] = by[r.no] || {}); (a[r.wd] = a[r.wd] || []).push(r); });
+    Object.keys(by).forEach((no) => Object.keys(by[no]).forEach((wd) => by[no][wd].sort((a, b) => a.at - b.at)));
+    return by;
+  }
+  function gridStaff(by) {
+    const staff = D.staff.filter((s) => by[s.no] || s.status === '재직');
+    Object.keys(by).forEach((no) => { if (!D.staff.some((s) => s.no === no)) staff.push({ no: no, name: (D.recs.filter((r) => r.no === no)[0] || {}).name || no, dept: '', status: '' }); });
+    return staff;
+  }
+  const tm = (r) => '<span style="border-bottom:3px solid ' + placeColor(r.place) + '" title="' + esc(r.place) + '">' + (r.day !== r.wd ? '↗' : '') + esc(r.time) + (r.fix ? '*' : '') + '</span>';
+  function cellInfo(items, date) {
+    const ins = items.filter((r) => r.type === '출근'), outs = items.filter((r) => r.type === '퇴근');
+    const working = ins.length && (date === todayStr() || Date.now() - ins[ins.length - 1].at < 16 * 3600 * 1000);
+    return { ins: ins, outs: outs, needOut: ins.length && !outs.length && !working, needIn: !ins.length && outs.length };
+  }
+  function renderGrid() {
+    const [y, m] = ym.split('-').map(Number), last = new Date(y, m, 0).getDate(), today = todayStr();
+    const by = byNoWd(), staff = gridStaff(by), seen = {};
+    let h = '<table class="grid"><thead><tr><th class="st">직원</th>';
+    for (let d = 1; d <= last; d++) {
+      const wd = new Date(y, m - 1, d).getDay(), date = ym + '-' + String(d).padStart(2, '0');
+      h += '<th class="' + (wd === 0 ? 'sun' : wd === 6 ? 'sat' : '') + (date === today ? ' today' : '') + '">' + d + '<small>' + WEEK[wd] + '</small></th>';
+    }
+    h += '<th>근무</th></tr></thead><tbody>';
+    staff.forEach((s) => {
+      let tot = 0, days = 0;
+      h += '<tr><th class="st">' + esc(s.name) + '<small>' + esc(s.dept || '') + (s.status && s.status !== '재직' ? ' · ' + esc(s.status) : '') + '</small></th>';
+      for (let d = 1; d <= last; d++) {
+        const wd = new Date(y, m - 1, d).getDay(), date = ym + '-' + String(d).padStart(2, '0');
+        const items = (by[s.no] || {})[date] || [];
+        let cell = '';
+        if (items.length) {
+          days++;
+          pairs(items).forEach((p) => { if (p.in && p.out) tot += p.out.at - p.in.at; });
+          items.forEach((r) => { if (r.place) seen[r.place] = 1; });
+          const c = cellInfo(items, date);
+          cell += c.ins.length ? '<div class="in">' + tm(c.ins[0]) + '</div>' : '<div class="miss">출근?</div>';
+          cell += c.outs.length ? '<div class="out">' + tm(c.outs[c.outs.length - 1]) + '</div>' : (c.needOut ? '<div class="miss">퇴근?</div>' : '');
+          if (items.length > 2) cell += '<div class="more">' + items.length + '건</div>';
+        }
+        h += '<td class="c' + (wd === 0 || wd === 6 ? ' we' : '') + (dk && dk.no === s.no && dk.wd === date ? ' sel' : '') + '" data-no="' + esc(s.no) + '" data-wd="' + date + '">' + cell + '</td>';
+      }
+      h += '<td class="tot">' + days + '일<small>' + hm(tot) + '</small></td></tr>';
+    });
+    h += '</tbody></table><div class="leg">' + Object.keys(seen).sort().map((p) => '<span><i style="background:' + placeColor(p) + '"></i>' + esc(p) + '</span>').join('') +
+      '<span>↗ 다음날 퇴근</span><span>* 관리자가 보정한 시각</span><span>칸을 누르면 그날 기록을 고칠 수 있어요</span></div>';
+    $('filters').innerHTML = '';
+    $('view').innerHTML = staff.length ? h : '<div class="empty">직원이 없어요</div>';
+  }
+
+  // ── 옆 칸: 한 사람의 하루 기록 ──
+  function closeDrawer() { dk = null; $('drawer').classList.add('hidden'); document.querySelectorAll('.grid td.sel').forEach((e) => e.classList.remove('sel')); }
+  function renderDrawer() {
+    const box = $('drawer');
+    if (!dk || !D || view !== 'grid') { box.classList.add('hidden'); return; }
+    const items = D.recs.filter((r) => r.no === dk.no && r.wd === dk.wd).sort((a, b) => a.at - b.at);
+    const dt = new Date(dk.wd + 'T00:00:00');
+    let h = '<div style="display:flex;align-items:center"><h2 style="flex:1">' + esc(nameOf(dk.no) || dk.no) + '</h2><button class="btn" data-act="closeDrawer">닫기</button></div>' +
+      '<div class="sub">' + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 (' + WEEK[dt.getDay()] + ') 근무 · 값을 바꾸면 바로 저장돼요</div>';
+    if (!items.length) h += '<div style="color:#888;margin:8px 0">이 날 기록이 없어요</div>';
+    else h += '<table><tbody>' + items.map((r) => '<tr class="ed' + (r.pend ? ' pend' : '') + '" data-id="' + r.id + '">' + edCells(r) +
+      '<td><button class="btn no" data-act="del">지우기</button></td></tr>').join('') + '</tbody></table>';
+    // 넣는 칸: 빠진 쪽과 시각을 미리 짐작 (오후 출근이면 야간으로 보고 퇴근은 다음날 아침)
+    const c = cellInfo(items, dk.wd);
+    let g = { type: '출근', time: '09:00', nd: false };
+    if (c.ins.length && !c.outs.length) {
+      const hh = Number(c.ins[0].time.slice(0, 2));
+      g = hh >= 14 ? { type: '퇴근', time: '09:00', nd: true } : { type: '퇴근', time: '18:00', nd: false };
+    } else if (c.needIn) g = { type: '출근', time: c.outs[0].day !== dk.wd ? '17:00' : '09:00', nd: false };
+    const mine = D.recs.filter((r) => r.no === dk.no && r.place);
+    const gp = items.length ? items[items.length - 1].place : (mine.length ? mine[mine.length - 1].place : '');
+    h += '<div class="addbox" id="addBox"><b>+ 기록 넣기</b><div class="row"><select id="aType">' + opt('출근', g.type) + opt('퇴근', g.type) + '</select>' +
+      '<input type="time" id="aTime" value="' + g.time + '"><label><input type="checkbox" id="aNd"' + (g.nd ? ' checked' : '') + '> 다음날</label>' +
+      placeSel(D.places.indexOf(gp) >= 0 ? gp : '', 'id="aPlace"') + '</div><button class="btn go" data-act="add">넣기</button></div>';
+    box.innerHTML = h;
+    box.classList.remove('hidden');
+  }
+
+  // ── 기록 표 ──
+  function listRows() {
+    let a = D.recs.filter((r) => (!fil.no || r.no === fil.no) && (!fil.type || r.type === fil.type) && (!fil.place || r.place === fil.place) && (!fil.fix || r.fix || /관리자/.test(r.how)));
+    const k = sort.k, dir = sort.dir;
+    a.sort((x, y) => {
+      const c = k === 'name' ? x.name.localeCompare(y.name, 'ko') : k === 'place' ? x.place.localeCompare(y.place, 'ko') : k === 'type' ? x.type.localeCompare(y.type, 'ko') : 0;
+      return (c || (x.wd < y.wd ? -1 : x.wd > y.wd ? 1 : 0) || (x.at - y.at)) * dir;
+    });
+    return a;
+  }
+  function renderFilters() {
+    const places = Array.from(new Set(D.recs.map((r) => r.place).filter((p) => p))).sort();
+    const staff = gridStaff(byNoWd());
+    $('filters').innerHTML = '<select data-fil="no">' + opt('', fil.no, '직원 전체') + staff.map((s) => opt(s.no, fil.no, s.name)).join('') + '</select>' +
+      '<select data-fil="type">' + opt('', fil.type, '출근·퇴근') + opt('출근', fil.type) + opt('퇴근', fil.type) + '</select>' +
+      '<select data-fil="place">' + opt('', fil.place, '장소 전체') + places.map((p) => opt(p, fil.place)).join('') + '</select>' +
+      '<label><input type="checkbox" data-fil="fix"' + (fil.fix ? ' checked' : '') + '> 관리자가 손댄 것만</label>';
+  }
+  function renderList() {
+    renderFilters();
+    const rows = listRows();
+    const th = (k, label) => '<th data-sort="' + k + '">' + label + (sort.k === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
+    let h = '<div style="margin-bottom:8px;color:#6b7280;font-size:13px">' + rows.length + '건 · 값을 바꾸면 바로 저장돼요 · 제목을 누르면 정렬돼요</div>' +
+      '<table class="list"><thead><tr>' + th('wd', '근무일') + th('name', '이름') + th('type', '구분') + '<th>시각</th><th>다음날</th>' + th('place', '장소') + '<th>판정</th><th></th></tr></thead><tbody>';
+    h += rows.map((r) => {
+      const dt = new Date(r.wd + 'T00:00:00');
+      return '<tr class="ed' + (r.pend ? ' pend' : '') + '" data-id="' + r.id + '"><td>' + (dt.getMonth() + 1) + '/' + dt.getDate() + ' (' + WEEK[dt.getDay()] + ')</td><td><b>' + esc(r.name) + '</b></td>' +
+        edCells(r) + '<td class="how">' + esc(r.how) + (r.nogps ? '<span class="tag">위치 없음</span>' : '') + '</td><td><button class="btn no" data-act="del">지우기</button></td></tr>';
+    }).join('');
+    h += '</tbody></table>';
+    $('view').innerHTML = rows.length ? h : '<div class="empty">조건에 맞는 기록이 없어요</div>';
+  }
+  function render() {
+    setYm();
+    if (!D) return;
+    if (view === 'grid') { renderGrid(); renderDrawer(); } else { $('drawer').classList.add('hidden'); renderList(); }
+  }
+
+  // ── 엑셀(CSV)로 내려받기: 지금 보고 있는 표 그대로 ──
+  function csv() {
+    if (!D) return;
+    const rows = [];
+    if (view === 'grid') {
+      const [y, m] = ym.split('-').map(Number), last = new Date(y, m, 0).getDate(), by = byNoWd();
+      const head = ['직원', '부서']; for (let d = 1; d <= last; d++) head.push(d + '일'); rows.push(head);
+      gridStaff(by).forEach((s) => {
+        const line = [s.name, s.dept || ''];
+        for (let d = 1; d <= last; d++) {
+          const items = (by[s.no] || {})[ym + '-' + String(d).padStart(2, '0')] || [], c = cellInfo(items, '');
+          line.push(items.length ? (c.ins.length ? c.ins[0].time : '') + '~' + (c.outs.length ? c.outs[c.outs.length - 1].time : '') : '');
+        }
+        rows.push(line);
+      });
+    } else {
+      rows.push(['근무일', '이름', '구분', '기록 날짜', '시각', '장소', '판정']);
+      listRows().forEach((r) => rows.push([r.wd, r.name, r.type, r.day, r.time, r.place, r.how]));
+    }
+    const text = '﻿' + rows.map((l) => l.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'KRF출퇴근_' + ym + (view === 'grid' ? '_월간표' : '_기록') + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ── 누르기·바꾸기 ──
+  function moveMonth(n) { const [y, m] = ym.split('-').map(Number); ym = ymStr(new Date(y, m - 1 + n, 1)); if (ym > ymStr(new Date())) ym = ymStr(new Date()); closeDrawer(); load(); }
+  document.addEventListener('click', async (ev) => {
+    const nav = ev.target.closest('aside .nav');
+    if (nav) { view = nav.dataset.view; store.set('pcView', view); render(); return; }
+    const sh = ev.target.closest('th[data-sort]');
+    if (sh) { const k = sh.dataset.sort; sort = { k: k, dir: sort.k === k ? -sort.dir : 1 }; renderList(); return; }
+    const b = ev.target.closest('[data-act]');
+    if (b) {
+      const act = b.dataset.act;
+      if (act === 'prev') return moveMonth(-1);
+      if (act === 'next') return moveMonth(1);
+      if (act === 'now') { ym = ymStr(new Date()); closeDrawer(); return load(); }
+      if (act === 'reload') { if (busy || q.length) { alert('저장이 끝난 뒤에 눌러 주세요'); return; } delete cache[ym]; return load(); }
+      if (act === 'csv') return csv();
+      if (act === 'closeDrawer') { closeDrawer(); return; }
+      if (act === 'undo') { const t = $('toast'); if (t._undo) { const f = t._undo; t._undo = null; t.classList.add('hidden'); f(); } return; }
+      if (act === 'del') { const rec = recById(b.closest('[data-id]').dataset.id); if (rec) delRec(rec); return; }
+      if (act === 'add' && dk) { addRec(dk.no, dk.wd, { type: $('aType').value, time: $('aTime').value, nd: $('aNd').checked, place: $('aPlace').value }); return; }
+      if (act === 'leave') {
+        if (!confirm('이 PC의 연결을 끊을까요?\n다시 쓰려면 휴대폰에서 숫자를 넣어 다시 연결해야 해요.')) return;
+        try { await api('superLeave', { deviceId: deviceId }); } catch (e) {}
+        location.reload();
+        return;
+      }
+      return;
+    }
+    const td = ev.target.closest('.grid td.c');
+    if (td && D) { dk = { no: td.dataset.no, wd: td.dataset.wd }; document.querySelectorAll('.grid td.sel').forEach((e) => e.classList.remove('sel')); td.classList.add('sel'); renderDrawer(); }
+  });
+  document.addEventListener('change', (ev) => {
+    const f = ev.target.closest('[data-fil]');
+    if (f) { fil[f.dataset.fil] = f.type === 'checkbox' ? f.checked : f.value; renderList(); return; }
+    const el = ev.target.closest('[data-f]');
+    if (!el) return;
+    const tr = el.closest('[data-id]'), rec = tr && recById(tr.dataset.id);
+    if (!rec) return;
+    const ok = saveEdit(rec, readRow(tr));
+    if (view === 'grid') { renderGrid(); if (!ok) renderDrawer(); }   // 표는 다시 그리고, 고치던 줄은 그대로 둠(틀렸을 때만 되돌림)
+    else if (!ok) renderList();
+  });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && dk) closeDrawer(); });
+
+  stat();
+  boot();
+})();
+</script>
+</body>
+</html>
