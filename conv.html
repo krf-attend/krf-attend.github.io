@@ -16,7 +16,9 @@
   .card { background:#fff; border:1px solid #e3e6ea; border-radius:12px; padding:18px 20px; margin-bottom:16px; }
   .step { font-weight:800; color:var(--b); margin-bottom:10px; }
   #drop { border:2px dashed #aac4ea; border-radius:12px; padding:34px 20px; text-align:center; font-size:18px; color:#456; cursor:pointer; background:#fbfdff; }
-  #drop.on { background:#eaf2fd; border-color:var(--b); }
+  #drop.on, .drop2.on { background:#eaf2fd; border-color:var(--b); }
+  .drop2 { border:2px dashed #aac4ea; border-radius:12px; padding:24px 20px; text-align:center; font-size:17px; color:#456; cursor:pointer; background:#fbfdff; }
+  .drop2 small { display:block; margin-top:6px; font-size:14px; color:var(--mut); }
   #drop small { display:block; margin-top:8px; font-size:14px; color:var(--mut); }
   table { border-collapse:collapse; width:100%; font-size:14px; }
   th, td { border:1px solid #e3e6ea; padding:6px 8px; text-align:left; vertical-align:top; }
@@ -64,10 +66,33 @@
   </div>
 
   <div class="card">
-    <div class="step">③ 엑셀로 내려받기</div>
+    <div class="step">③ 주간 실적 엑셀 받기</div>
     <div class="row">
-      <button id="dl" class="main" disabled>사업실적 달력 엑셀 받기</button>
-      <span class="sub" style="margin:0">시트: <b>N월</b>(달력·개수) · <b>확인용</b>(시간대별로 어떻게 셌는지) · <b>변환규칙</b></span>
+      <button id="dl" class="main" disabled>주간 실적 엑셀 받기</button>
+      <span class="sub" style="margin:0">시트: <b>주간 N월</b>(달력·개수) · <b>주간 확인용</b>(시간대별로 어떻게 셌는지) · <b>주간 변환규칙</b></span>
+    </div>
+  </div>
+
+  <div class="card" id="jcard">
+    <div class="step">④ 야간(주거) 실적: 종사자 인수인계서(HWP) 넣기</div>
+    <div class="sub" style="margin:0 0 10px">인수인계서의 「3. 종사자 전달사항 → 주거서비스」를 <b>야간(아침)·등원 전</b>과 <b>야간(저녁)·귀가 후</b>로 나눠 따로 세요. 나누는 기준: 「(야간)」 줄 → 없으면 「입소 후·입실 후」 → 없으면 시각. 이용인 이름은 <b>파일 이름</b>에서 찾아요 (예: 261119(목)_강경민 종사자 인수인계서.hwp).</div>
+    <div id="jdrop" class="drop2">인수인계서 .hwp 파일들을 끌어다 놓거나 눌러서 고르세요
+      <small>여러 날·여러 이용인 한꺼번에 가능 · 같은 이용인·같은 날은 새 파일로 바뀌어요</small></div>
+    <input id="jfile" type="file" accept=".hwp" multiple class="hidden">
+    <div id="jfiles" style="margin-top:12px"></div>
+    <div id="jsummary" class="codes" style="margin-top:10px"></div>
+    <div id="jpreview" style="margin-top:12px;overflow:auto"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="jdl" class="main" disabled>야간 실적 엑셀 받기</button>
+      <span class="sub" style="margin:0">시트: <b>야간(아침) N월</b> · <b>야간(저녁) N월</b> (각각 달력·개수) · <b>야간 확인용</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step">⑤ 세 가지 한꺼번에 받기</div>
+    <div class="row">
+      <button id="alldl" class="main" disabled>주간 + 야간(아침) + 야간(저녁) 한 파일로 받기</button>
+      <span id="allmsg" class="sub" style="margin:0">③과 ④에 파일을 넣으면 눌러져요. 같은 달끼리만 합쳐요.</span>
     </div>
   </div>
 
@@ -83,6 +108,8 @@
       </div>
       <div class="sub" style="margin-top:12px">이용인 칸 순서 (사업실적 시트와 같게, 쉼표로):</div>
       <input id="order" style="width:100%;font-size:15px;padding:6px">
+      <div class="sub" style="margin-top:12px">주거 규칙 (인수인계서용, 같은 형식):</div>
+      <textarea id="jrules" style="height:260px"></textarea>
       <div class="sub" style="margin-top:12px">「활동 아님」으로 정한 말 (쉼표로, 지우면 다시 물어봐요):</div>
       <input id="ign" style="width:100%;font-size:15px;padding:6px">
     </details>
@@ -251,7 +278,7 @@
     const styles = {};
     const st = (r, c, s) => { styles[XLSX.utils.encode_cell({ r: r, c: c })] = s; };
 
-    set(0, Math.floor(lastCol / 2), month + '월');
+    set(0, Math.floor(lastCol / 2), month + '월 주간');
     set(0, lastCol, year + '년');
     set(1, 1, '일');
     for (let dow = 1; dow <= 5; dow++) set(1, colOfDow(dow), WEEK[dow]);
@@ -335,14 +362,211 @@
     ws3['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 7 }, { wch: 80 }];
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, month + '월');
-    XLSX.utils.book_append_sheet(wb, ws2, '확인용');
-    XLSX.utils.book_append_sheet(wb, ws3, '변환규칙');
+    XLSX.utils.book_append_sheet(wb, ws, '주간 ' + month + '월');
+    XLSX.utils.book_append_sheet(wb, ws2, '주간 확인용');
+    XLSX.utils.book_append_sheet(wb, ws3, '주간 변환규칙');
     return { wb: wb, res: res, names: names, missing: names.filter((n) => !res.people[n]) };
   }
 
   const api = { DEFAULT_RULES, DEFAULT_ORDER, rulesToText, textToRules, slots, classify, readRecord, analyze, buildWorkbook };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Conv = api;
+})(this);
+</script>
+<script>/* 종사자 인수인계서(HWP) → 주거서비스 실적 (브라우저·node 공용). XLSX(xlsx-js-style)의 CFB·inflate를 씀 */
+(function (root) {
+  // 사업실적 KRF센터 시트의 주거지원 항목 순서 그대로. code: 새로 붙인 한 글자
+  const J_RULES = [
+    { code: '식', name: '식사 지원', no: '', kw: ['식사', '식판', '배식', '요거트', '밥과 국', '추가 지원'] },
+    { code: '탁', name: '세탁 훈련', no: '', kw: ['세탁', '빨래', '건조기', '옷 정리'] },
+    { code: '변', name: '신변 처리', no: '', kw: ['소변', '대변', '배뇨', '배변', '화장실', '기저귀', '뒤처리', '용변', '생리'] },
+    { code: '주', name: '주거 지원', no: '', kw: ['기상', '일어나', '취침', '잠자', '수면', '매트 정리', '실내 온도', '여벌', '백팩', '입소', '입실'] },
+    { code: '결', name: '청결 활동', no: '', kw: ['청소', '먼지', '쓰레기', '바닥 닦', '환기', '냉장고'] },
+    { code: '침', name: '침구 세탁', no: '', kw: ['침구', '이불'] },
+    { code: '샤', name: '샤워 지원', no: '', kw: ['샤워', '목욕', '샴푸', '욕실'] },
+    { code: '치', name: '양치 및 세면 지원', no: '', kw: ['양치', '세면', '세안', '손 씻', '머리 정리', '머리 말', '드라이', '보습', '로션', '스킨'] },
+    { code: '옷', name: '환복 지원', no: '', kw: ['환복', '갈아입', '착의', '탈의', '가운'] },
+    { code: '운', name: '저녁 운동 지원', no: '', kw: ['운동', '산책', '걷기', '스트레칭', '체조'] },
+    { code: '동', name: '이동 지원', no: '', kw: ['택시', '셔틀', '버스', '이동 지원', '이동지원', '센터로 이동', '센터까지', '센터 이동'] },
+    { code: '야', name: '야간 간식 지원', no: '', kw: ['간식', '과자'] },
+    { code: '리', name: '요리 활동', no: '', kw: ['요리'] },
+    { code: '화', name: '야간 문화 활동 지원', no: '', kw: ['영화', '공연', '노래방', '문화활동', '문화 활동'] },
+    { code: '여', name: '여가 활동', no: '', kw: ['휴식', '인형', '풍선', '그리기', '색칠', 'TV', '텔레비전', '음악', '놀이', '마사지', '사진', '게임', '퍼즐'] },
+    { code: '약', name: '복약지도', no: '', kw: ['복용', '약과 물', '식전 약', '식전약', '저녁 약', '처방약', '변비약', '시럽', '연고', '도포', '약 지원'] }
+  ];
+  const sq = (s) => String(s).replace(/[\s.·ㆍ\-_'"`]+/g, '');
+
+  /** HWP(5.x) 본문 글자 뽑기 */
+  function hwpText(XLSX, data) {
+    const u8 = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+    const cfb = XLSX.CFB.read(u8, { type: (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(u8)) ? 'buffer' : 'array' });
+    const hdr = XLSX.CFB.find(cfb, '/FileHeader');
+    if (!hdr) throw new Error('한글(HWP) 파일이 아니에요');
+    const compressed = hdr.content[36] & 1;
+    const out = [];
+    for (let s = 0; ; s++) {
+      const e = XLSX.CFB.find(cfb, '/BodyText/Section' + s);
+      if (!e) break;
+      let d = e.content;
+      if (compressed) d = XLSX.CFB.utils._inflateRaw(d, 0);
+      if (!(d instanceof Uint8Array)) d = Uint8Array.from(d);
+      const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+      let i = 0;
+      while (i + 4 <= d.length) {
+        const h = dv.getUint32(i, true); const tag = h & 0x3ff; let size = (h >>> 20) & 0xfff; i += 4;
+        if (size === 0xfff) { size = dv.getUint32(i, true); i += 4; }
+        if (tag === 67) {
+          let s2 = '';
+          for (let j = i; j + 1 < i + size; ) {
+            const c = dv.getUint16(j, true);
+            if ([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].indexOf(c) >= 0) { j += 16; continue; }
+            if (c === 10 || c === 13) { s2 += '\n'; j += 2; continue; }
+            if (c < 32) { j += 2; continue; }
+            s2 += String.fromCharCode(c); j += 2;
+          }
+          out.push(s2.replace(/\n+$/, ''));
+        }
+        i += size;
+      }
+    }
+    return out.join('\n');
+  }
+
+  /** 인수인계서 한 장 → { date, name, morning:[문장], night:[문장] } */
+  function readHandover(text, fileName, names) {
+    const t = text.replace(/\r/g, '');
+    let y = 0, m = 0, d = 0;
+    let mm = t.match(/작성일\s*:?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (mm) { y = +mm[1]; m = +mm[2]; d = +mm[3]; }
+    if (!d) { mm = String(fileName).match(/(\d{2})(\d{2})(\d{2})/); if (mm) { y = 2000 + +mm[1]; m = +mm[2]; d = +mm[3]; } }
+    // 이름: 파일 이름에 들어 있는 이용인 이름
+    let name = '';
+    (names || []).forEach((n) => { if (!name && n && String(fileName).indexOf(n) >= 0) name = n; });
+    if (!name) { const nm = String(fileName).match(/[_\s)]([가-힣]{2,4})\s*(종사자|인수인계)/); if (nm) name = nm[1]; }
+    // '3. 종사자 전달' 아래 '주거 서비스' ~ '4. 보호자' 까지
+    const lines = t.split('\n');
+    let a = lines.findIndex((l) => /^\s*3\.\s*종사자\s*전달/.test(l));
+    let s = -1, e = lines.length;
+    for (let i = a + 1; i < lines.length; i++) {
+      if (s < 0 && /^\s*주거\s*서비스\s*$/.test(lines[i])) s = i + 1;
+      if (/^\s*4\.\s*보호자/.test(lines[i])) { e = i; break; }
+    }
+    const body = s > 0 ? lines.slice(s, e).map((x) => x.trim()).filter(Boolean) : [];
+    // 아침/야간 나누기: '(야간)' 줄 → 없으면 '입소 후·입실 후' 줄 → 없으면 시각(17시 이후)
+    let cut = body.findIndex((l) => /^\(?\s*야간\s*\)?$/.test(l) || /^\(\s*야간\s*\)/.test(l));
+    let how = '(야간) 표시';
+    if (cut < 0) { cut = body.findIndex((l) => /^-?\s*(입소|입실)\s*후/.test(l)); how = '입소·입실 후'; }
+    if (cut < 0) {
+      cut = body.findIndex((l) => { const h = l.match(/(\d{1,2})\s*[:시]/); return h && +h[1] >= 15; });
+      how = '시각';
+    }
+    if (cut < 0) { cut = body.length; how = '아침만'; }
+    const strip = (l) => l.replace(/^[-#•·\s]+/, '').replace(/^\(?\s*야간\s*\)?\s*/, '');
+    const sent = (arr) => arr.map(strip).filter(Boolean);
+    return { name: name, file: fileName, year: y, month: m, day: d, how: how,
+             morning: sent(body.slice(0, cut)), night: sent(body.slice(cut)), found: s > 0 };
+  }
+
+  // 다른 항목과 헷갈리는 말은 먼저 바꿔 둠 (화장실 청소 → 신변 처리 아님)
+  const PRE = [[/화장실\s*청소/g, '청소']];
+  function classifyJ(sentence, rules) {
+    let t = String(sentence); PRE.forEach(([a, b]) => { t = t.replace(a, b); });
+    const s = sq(t);
+    return rules.filter((r) => r.kw.some((k) => k && s.indexOf(sq(k)) >= 0)).map((r) => r.code);
+  }
+
+  /** 여러 장 → 사람별·날짜별 아침/야간 코드 */
+  function analyzeJ(recs, rules) {
+    const people = {}, check = [];
+    recs.forEach((r) => {
+      const p = people[r.name] || (people[r.name] = {});
+      const day = p[r.day] || (p[r.day] = { m: [], n: [] });
+      [['m', '아침', r.morning], ['n', '저녁', r.night]].forEach(([k, label, arr]) => {
+        arr.forEach((line) => {
+          const codes = classifyJ(line, rules);
+          codes.forEach((c) => { if (day[k].indexOf(c) < 0) day[k].push(c); });
+          check.push({ name: r.name, day: r.day, part: label, text: line, codes: codes.join(' ') });
+        });
+      });
+    });
+    // 코드 순서는 규칙 순서로
+    const ord = rules.map((x) => x.code);
+    Object.values(people).forEach((p) => Object.values(p).forEach((d) => { d.m.sort((a, b) => ord.indexOf(a) - ord.indexOf(b)); d.n.sort((a, b) => ord.indexOf(a) - ord.indexOf(b)); }));
+    return { people: people, check: check };
+  }
+
+  /** 달력 모양 시트 하나 (일~토 × 이용인 칸, 날짜 밑에 코드 세로로) + 오른쪽 개수표 */
+  function calSheet(XLSX, data, names, rules, year, month, title) {
+    const N = names.length || 1, W = ['일', '월', '화', '수', '목', '금', '토'];
+    const first = new Date(year, month - 1, 1).getDay(), last = new Date(year, month, 0).getDate();
+    let maxCodes = 6;
+    names.forEach((n) => Object.values(data[n] || {}).forEach((c) => { maxCodes = Math.max(maxCodes, c.length); }));
+    const block = 1 + maxCodes, weeks = Math.ceil((first + last) / 7);
+    const aoa = [], st = {};
+    const set = (r, c, v) => { while (aoa.length <= r) aoa.push([]); aoa[r][c] = v; };
+    set(0, 0, title);
+    for (let dow = 0; dow < 7; dow++) { set(1, 1 + dow * N, W[dow]); names.forEach((n, i) => set(2, 1 + dow * N + i, n)); }
+    for (let w = 0; w < weeks; w++) {
+      const r0 = 3 + w * block;
+      for (let dow = 0; dow < 7; dow++) {
+        const day = w * 7 + dow - first + 1;
+        if (day < 1 || day > last) continue;
+        const c0 = 1 + dow * N;
+        set(r0, c0, day); st[r0 + ',' + c0] = 1;
+        names.forEach((n, i) => ((data[n] || {})[day] || []).forEach((code, k) => set(r0 + 1 + k, c0 + i, code)));
+      }
+    }
+    const lastCol = 7 * N, lastRow = 3 + weeks * block - 1, sc = lastCol + 2;
+    const L = (c) => XLSX.utils.encode_col(c);
+    ['번호', '세부사업명', '코드', '명', '횟수'].forEach((h, i) => set(1, sc + i, h));
+    const f = {}, rng = '$B$4:$' + L(lastCol) + '$' + (lastRow + 1);
+    rules.forEach((r, i) => {
+      const row = 2 + i; let cnt = 0;
+      names.forEach((n) => Object.values(data[n] || {}).forEach((c) => { if (c.indexOf(r.code) >= 0) cnt++; }));
+      set(row, sc, r.no); set(row, sc + 1, r.name); set(row, sc + 2, r.code); set(row, sc + 3, cnt); set(row, sc + 4, Math.round(cnt / N * 100) / 100);
+      f[XLSX.utils.encode_cell({ r: row, c: sc + 3 })] = 'COUNTIF(' + rng + ',"' + r.code + '")';
+      f[XLSX.utils.encode_cell({ r: row, c: sc + 4 })] = L(sc + 3) + (row + 1) + '/' + N;
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    Object.keys(f).forEach((a) => { ws[a].f = f[a]; });
+    const thin = { style: 'thin', color: { rgb: 'BBBBBB' } }, B = { top: thin, bottom: thin, left: thin, right: thin };
+    for (let r = 1; r <= lastRow; r++) for (let c = 1; c <= lastCol; c++) {
+      const a = XLSX.utils.encode_cell({ r: r, c: c }); if (!ws[a]) ws[a] = { t: 's', v: '' };
+      ws[a].s = { border: B, alignment: { horizontal: 'center', vertical: 'center' }, font: { sz: 10, bold: r <= 2 || !!st[r + ',' + c] },
+                  fill: r <= 2 ? { fgColor: { rgb: 'F4F6F8' } } : (st[r + ',' + c] ? { fgColor: { rgb: 'EEF3FB' } } : undefined) };
+    }
+    for (let r = 1; r <= rules.length + 1; r++) for (let c = sc; c < sc + 5; c++) {
+      const a = XLSX.utils.encode_cell({ r: r, c: c }); if (ws[a]) ws[a].s = { border: B, font: { sz: 10, bold: r === 1 }, alignment: { horizontal: 'center' }, fill: r === 1 ? { fgColor: { rgb: 'F4F6F8' } } : undefined };
+    }
+    ws['!merges'] = W.map((_, dow) => ({ s: { r: 1, c: 1 + dow * N }, e: { r: 1, c: dow * N + N } }));
+    ws['!cols'] = [{ wch: 2 }].concat(Array(lastCol).fill({ wch: 6 })).concat([{ wch: 2 }, { wch: 6 }, { wch: 18 }, { wch: 5 }, { wch: 5 }, { wch: 6 }]);
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(lastRow, rules.length + 2), c: sc + 4 } });
+    return ws;
+  }
+
+  /** 주거 결과: 야간(아침) 시트, 야간(저녁) 시트, 확인용, 규칙 */
+  function buildJWorkbook(XLSX, recs, rules, opt) {
+    const year = opt.year, month = opt.month, order = opt.order || [];
+    const res = analyzeJ(recs, rules);
+    const names = order.slice().concat(Object.keys(res.people).filter((n) => order.indexOf(n) < 0));
+    const pick = (k) => { const o = {}; names.forEach((n) => { o[n] = {}; Object.entries(res.people[n] || {}).forEach(([d, x]) => { if (x[k].length) o[n][d] = x[k]; }); }); return o; };
+    const wsM = calSheet(XLSX, pick('m'), names, rules, year, month, month + '월 야간(아침) — 등원 전 주거서비스');
+    const wsN = calSheet(XLSX, pick('n'), names, rules, year, month, month + '월 야간(저녁) — 귀가 후 주거서비스');
+    const chk = [['이용인', '날짜', '구간', '인수인계서 문장', '센 코드']].concat(res.check.map((x) => [x.name, month + '/' + x.day, x.part === '아침' ? '야간(아침)' : '야간(저녁)', x.text, x.codes]));
+    const ws2 = XLSX.utils.aoa_to_sheet(chk);
+    ws2['!cols'] = [{ wch: 8 }, { wch: 7 }, { wch: 10 }, { wch: 80 }, { wch: 12 }];
+    ws2['!autofilter'] = { ref: 'A1:E' + chk.length };
+    const ws3 = XLSX.utils.aoa_to_sheet([['코드', '세부사업명', '번호', '이 말이 들어가면 셈']].concat(rules.map((r) => [r.code, r.name, r.no, r.kw.join(', ')])));
+    ws3['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 7 }, { wch: 80 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsM, '야간(아침) ' + month + '월');
+    XLSX.utils.book_append_sheet(wb, wsN, '야간(저녁) ' + month + '월');
+    XLSX.utils.book_append_sheet(wb, ws2, '야간 확인용');
+    XLSX.utils.book_append_sheet(wb, ws3, '야간 변환규칙');
+    return { wb: wb, res: res, names: names.filter((n) => res.people[n]) };
+  }
+
+  const api = { J_RULES, hwpText, readHandover, classifyJ, analyzeJ, buildJWorkbook, calSheet };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.JConv = api;
 })(this);
 </script>
 <script>
@@ -356,6 +580,13 @@
   };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   let records = [];   // 읽은 기록지 (이용인별 1개)
+  let lastDay = null, lastNight = null;   // 마지막으로 만든 주간·야간 결과 (한꺼번에 받기용)
+  function allState() {
+    const ok = lastDay && lastNight && lastDay.y === lastNight.y && lastDay.mo === lastNight.mo;
+    $('alldl').disabled = !ok;
+    $('allmsg').textContent = ok ? lastDay.y + '년 ' + lastDay.mo + '월 · 시트: 주간 / 야간(아침) / 야간(저녁) + 확인용' :
+      (lastDay && lastNight ? '주간과 야간의 달이 달라요 (' + lastDay.mo + '월 / ' + lastNight.mo + '월)' : '③과 ④에 파일을 넣으면 눌러져요. 같은 달끼리만 합쳐요.');
+  }
   let rules = Conv.DEFAULT_RULES;
   let order = Conv.DEFAULT_ORDER.slice();
 
@@ -401,7 +632,7 @@
         '<td><button data-i="' + i + '" class="rm" style="padding:2px 10px;font-size:13px">빼기</button></td></tr>').join('') + '</table>' : '';
     document.querySelectorAll('.rm').forEach((b) => b.onclick = () => { records.splice(+b.dataset.i, 1); render(); });
     $('dl').disabled = !ok.length || !y || !mo;
-    if (!ok.length) { $('summary').textContent = '기록지를 넣으면 여기에 요약이 나와요.'; $('preview').innerHTML = ''; return; }
+    if (!ok.length) { $('summary').textContent = '기록지를 넣으면 여기에 요약이 나와요.'; $('preview').innerHTML = ''; lastDay = null; allState(); return; }
 
     const use = ok.filter((r) => r.year === y && r.month === mo);
     const out = Conv.buildWorkbook(XLSX, use, rules, { year: y, month: mo, order: order });
@@ -477,7 +708,8 @@
       t += '</tr>';
     }
     $('preview').innerHTML = t + '</table>';
-    $('dl').onclick = () => XLSX.writeFile(out.wb, y + '년 ' + mo + '월 사업실적 달력(자동).xlsx');
+    $('dl').onclick = () => XLSX.writeFile(out.wb, y + '년 ' + mo + '월 주간 실적(자동).xlsx');
+    lastDay = { wb: out.wb, y: y, mo: mo }; allState();
   }
 
   const drop = $('drop');
@@ -492,13 +724,99 @@
     const r = Conv.textToRules($('rules').value);
     if (!r.length) { $('ruleMsg').textContent = '규칙을 읽지 못했어요'; return; }
     rules = r; store.set('rules', $('rules').value);
+    const jr = Conv.textToRules($('jrules').value); if (jr.length) { jrules = jr; store.set('jrules', $('jrules').value); } jrender();
     order = $('order').value.split(',').map((x) => x.trim()).filter(Boolean);
     if (order.length) store.set('order', order.join(',')); else order = Conv.DEFAULT_ORDER.slice();
     ignore = $('ign').value.split(',').map((x) => x.trim()).filter(Boolean); store.set('ignore', ignore.join(','));
     $('ruleMsg').textContent = '저장했어요'; render();
   };
+  // ───────── 주거: 인수인계서 ─────────
+  let jrecs = [];
+  let jrules = JConv.J_RULES;
+  const sj = store.get('jrules'); if (sj) { const r = Conv.textToRules(sj); if (r.length) jrules = r; }
+  $('jrules').value = Conv.rulesToText(jrules);
+  async function addHwp(list) {
+    for (const f of list) {
+      try {
+        const txt = JConv.hwpText(XLSX, await f.arrayBuffer());
+        const r = JConv.readHandover(txt, f.name, order);
+        if (!r.found) r.error = '「주거서비스」 칸을 못 찾았어요';
+        else if (!r.name) r.error = '파일 이름에서 이용인 이름을 못 찾았어요 (예: 261119(목)_강경민 종사자 인수인계서.hwp)';
+        else if (!r.day) r.error = '작성일을 못 찾았어요';
+        jrecs = jrecs.filter((x) => !(x.name === r.name && x.year === r.year && x.month === r.month && x.day === r.day && r.name));
+        jrecs.push(r);
+      } catch (e) { jrecs.push({ file: f.name, error: '읽지 못했어요: ' + e.message }); }
+    }
+    jrecs.sort((a, b) => (a.name || '').localeCompare(b.name || '') || (a.month - b.month) || (a.day - b.day));
+    jrender();
+  }
+  function jrender() {
+    const ok = jrecs.filter((r) => !r.error);
+    $('jfiles').innerHTML = jrecs.length ? '<table><tr><th>파일</th><th>이용인</th><th>날짜</th><th>나눈 기준</th><th>아침/야간 줄 수</th><th></th></tr>' +
+      jrecs.map((r, i) => '<tr><td>' + esc(r.file) + '</td>' + (r.error ? '<td colspan="4" class="warn">' + esc(r.error) + '</td>' :
+        '<td><b>' + esc(r.name) + '</b></td><td>' + r.month + '/' + r.day + '</td><td>' + esc(r.how) + '</td><td>' + r.morning.length + ' / ' + r.night.length + '</td>') +
+        '<td><button data-i="' + i + '" class="jrm" style="padding:2px 10px;font-size:13px">빼기</button></td></tr>').join('') + '</table>' : '';
+    document.querySelectorAll('.jrm').forEach((b) => b.onclick = () => { jrecs.splice(+b.dataset.i, 1); jrender(); });
+    $('jdl').disabled = !ok.length;
+    if (!ok.length) { $('jsummary').innerHTML = ''; $('jpreview').innerHTML = ''; lastNight = null; allState(); return; }
+    const m = {}; ok.forEach((r) => { const k = r.year + '-' + r.month; m[k] = (m[k] || 0) + 1; });
+    const [y, mo] = Object.keys(m).sort((a, b) => m[b] - m[a])[0].split('-').map(Number);
+    const use = ok.filter((r) => r.year === y && r.month === mo);
+    const out = JConv.buildJWorkbook(XLSX, use, jrules, { year: y, month: mo, order: order });
+    let h = '<b>' + y + '년 ' + mo + '월 · 인수인계서 ' + use.length + '장</b>' + (ok.length > use.length ? ' <span class="warn">(다른 달 ' + (ok.length - use.length) + '장은 뺐어요)</span>' : '') + '<br>';
+    h += jrules.map((r) => {
+      let a = 0, n = 0;
+      Object.values(out.res.people).forEach((p) => Object.values(p).forEach((x) => { a += x.m.indexOf(r.code) >= 0 ? 1 : 0; n += x.n.indexOf(r.code) >= 0 ? 1 : 0; }));
+      return '<span class="tag">' + esc(r.code + ' ' + r.name) + ' <b>' + a + '+' + n + '</b></span>';
+    }).join('') + '<div class="sub" style="margin:4px 0 0">숫자는 야간(아침)+야간(저녁)이에요.</div>';
+    const zero = out.res.check.filter((x) => !x.codes);
+    if (zero.length) {
+      const opts = '<option value="">고르기</option>' + jrules.map((r, i) => '<option value="' + i + '">' + esc(r.code + ' ' + r.name) + '</option>').join('');
+      h += '<details style="margin-top:8px"><summary>항목으로 안 센 문장 ' + zero.length + '개 (도전행동·상태 기록 등은 그냥 두셔도 돼요. 활동이면 말을 골라 저장)</summary>' +
+        '<table style="margin-top:6px"><tr><th>이용인·날짜</th><th>문장</th><th>기억할 말</th><th>항목</th><th></th></tr>' +
+        zero.map((z, i) => '<tr><td style="white-space:nowrap">' + esc(z.name) + ' ' + mo + '/' + z.day + ' ' + z.part + '</td><td>' + esc(z.text) + '</td>' +
+          '<td><input id="jw' + i + '" placeholder="예: 변비약" style="width:120px;font-size:14px;padding:4px"></td>' +
+          '<td><select id="js' + i + '" style="font-size:14px;padding:4px;max-width:200px">' + opts + '</select></td>' +
+          '<td><button class="jlearn" data-i="' + i + '" style="padding:4px 10px;font-size:14px">저장</button></td></tr>').join('') + '</table></details>';
+    } else h += '<div class="ok" style="margin-top:8px">모든 문장을 항목으로 셌어요 👍</div>';
+    $('jsummary').innerHTML = h;
+    document.querySelectorAll('.jlearn').forEach((b) => b.onclick = () => {
+      const i = b.dataset.i, w = $('jw' + i).value.trim(), k = $('js' + i).value;
+      if (!w || k === '') { b.textContent = '말·항목을 넣어 주세요'; return; }
+      jrules = jrules.map((r, j) => j === +k ? Object.assign({}, r, { kw: r.kw.concat(r.kw.indexOf(w) < 0 ? [w] : []) }) : r);
+      $('jrules').value = Conv.rulesToText(jrules); store.set('jrules', $('jrules').value); jrender();
+    });
+    // 미리보기: 날짜 × 이용인(아침/야간)
+    const names = out.names, last = new Date(y, mo, 0).getDate(), W = '일월화수목금토';
+    let t = '<table class="grid"><tr><th>날짜</th>' + names.map((n) => '<th colspan="2" style="text-align:center">' + esc(n) + '</th>').join('') + '</tr><tr><th></th>' +
+      names.map(() => '<th style="text-align:center">야간(아침)</th><th style="text-align:center">야간(저녁)</th>').join('') + '</tr>';
+    for (let d = 1; d <= last; d++) {
+      if (!names.some((n) => out.res.people[n][d])) continue;
+      t += '<tr><td class="d">' + mo + '/' + d + ' ' + W[new Date(y, mo - 1, d).getDay()] + '</td>' +
+        names.map((n) => { const x = out.res.people[n][d]; return '<td>' + (x ? x.m.join(' ') : '') + '</td><td>' + (x ? x.n.join(' ') : '') + '</td>'; }).join('') + '</tr>';
+    }
+    $('jpreview').innerHTML = t + '</table>';
+    $('jdl').onclick = () => XLSX.writeFile(out.wb, y + '년 ' + mo + '월 야간 실적(인수인계서 자동).xlsx');
+    lastNight = { wb: out.wb, y: y, mo: mo }; allState();
+  }
+  $('alldl').onclick = () => {
+    if (!lastDay || !lastNight) return;
+    const wb = XLSX.utils.book_new();
+    const add = (src, names) => names.forEach((n) => { if (src.Sheets[n]) XLSX.utils.book_append_sheet(wb, src.Sheets[n], n); });
+    const mo = lastDay.mo;
+    add(lastDay.wb, ['주간 ' + mo + '월']); add(lastNight.wb, ['야간(아침) ' + mo + '월', '야간(저녁) ' + mo + '월']);
+    add(lastDay.wb, ['주간 확인용']); add(lastNight.wb, ['야간 확인용']);
+    XLSX.writeFile(wb, lastDay.y + '년 ' + mo + '월 사업실적(주간·야간 자동).xlsx');
+  };
+  const jdrop = $('jdrop');
+  jdrop.onclick = () => $('jfile').click();
+  $('jfile').onchange = (e) => { addHwp([...e.target.files]); e.target.value = ''; };
+  ['dragenter', 'dragover'].forEach((ev) => jdrop.addEventListener(ev, (e) => { e.preventDefault(); jdrop.classList.add('on'); }));
+  ['dragleave', 'drop'].forEach((ev) => jdrop.addEventListener(ev, (e) => { e.preventDefault(); jdrop.classList.remove('on'); }));
+  jdrop.addEventListener('drop', (e) => addHwp([...e.dataTransfer.files].filter((f) => /\.hwp$/i.test(f.name))));
+
   $('resetRules').onclick = () => {
-    store.del('rules'); store.del('order'); store.del('ignore'); ignore = []; $('ign').value = ''; rules = Conv.DEFAULT_RULES; order = Conv.DEFAULT_ORDER.slice();
+    store.del('rules'); store.del('order'); store.del('ignore'); store.del('jrules'); jrules = JConv.J_RULES; $('jrules').value = Conv.rulesToText(jrules); jrender(); ignore = []; $('ign').value = ''; rules = Conv.DEFAULT_RULES; order = Conv.DEFAULT_ORDER.slice();
     $('rules').value = Conv.rulesToText(rules); $('order').value = order.join(', ');
     $('ruleMsg').textContent = '처음 규칙으로 돌렸어요'; render();
   };
