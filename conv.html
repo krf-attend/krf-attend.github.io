@@ -122,21 +122,21 @@
   // 사업실적 '월' 시트의 코드 순서 그대로. kw: 기록지에 나오면 이 코드로 세는 말들
   const DEFAULT_RULES = [
     { code: '이', name: '이동지원', no: '101', kw: ['이동지원', '이동', '택시', '대중교통', '도보', '버스', '지하철', '송영', '차량'] },
-    { code: '생', name: '개인위생관리', no: '102', kw: ['위생지원', '위생', '양치', '신변처리', '의복관리', '손씻기', '세수', '세면', '샤워', '화장실', '옷갈아입기'] },
-    { code: '통', name: '의사소통훈련', no: '55', kw: ['의사소통', '하루일과나누기', '주말일과나누기', '일과나누기', '티타임', 'AAC', '수어', '요구사항적기'] },
+    { code: '생', name: '개인위생관리', no: '102', kw: ['위생지원', '위생', '양치', '신변처리', '의복관리', '면도', '손씻기', '세수', '세면', '샤워', '화장실', '옷갈아입기'] },
+    { code: '통', name: '의사소통훈련', no: '55', kw: ['의사소통', '하루일과나누기', '주말일과나누기', '일과나누기', '일정안내', '일정논의', '티타임', 'AAC', '수어', '요구사항적기'] },
     { code: '교', name: '이용자교육', no: '56', kw: ['이용자교육', '안전교육', '성교육', '소방훈련', '식사예절', '생활예절', '경제교육'] },
     { code: '중', name: '중식서비스', no: '59', kw: ['중식', '점심'] },
     { code: '청', name: '청결유지', no: '57', kw: ['청결유지', '대청소', '소독'] },
     { code: '간', name: '주간 간식 지원', no: '58', kw: ['간식'] },
     { code: '탐', name: '지역사회탐방', no: '60,61', kw: ['지역사회탐방', '캠프', '외부수업'] },
-    { code: '체', name: '생활체육', no: '103', kw: ['생활체육', '체육', '신체활동', '걷기', '체조', '요가', '수영', '볼링', '다이어트댄스', '댄스', '산책', '트레킹', '필라테스', '계단운동', '달리기', '스트레칭'] },
-    { code: 'M', name: '주간문화 활동', no: '62', kw: ['주간문화', '문화활동', '영화', '미술관', '전시', '수족관', '놀이공원', '공연'] },
-    { code: '잠', name: '잠재력 개발', no: '63', kw: ['잠재력', '교구', '미술활동', '음악활동', '독서', '핸드폰', '휴대폰', '노트북', '개인여가', '클레이', '색칠', '꾸미기', '도구활동', '블록', '컵쌓기', '원예', '꽃바구니', '꽂바구니', '스카프', '보드게임', '소근육', '퍼즐', '그림', '노래', '악기', '만들기', '공예', '텃밭', '종이접기', '컬러링', '게임', '태블릿', '컴퓨터'] },
-    { code: '요', name: '주간요리활동', no: '64', kw: ['요리'] },
+    { code: '체', name: '생활체육', no: '103', kw: ['생활체육', '체육', '신체활동', '걷기', '체조', '계단오르기', '요가', '수영', '볼링', '다이어트댄스', '댄스', '산책', '트레킹', '필라테스', '계단운동', '달리기', '스트레칭'] },
+    { code: 'M', name: '주간문화 활동', no: '62', kw: ['주간문화', '문화활동', '문화생활', '영화', '미술관', '박물관', '뮤지컬', '메가박스', '관람', '시상식', '전시', '수족관', '놀이공원', '공연'] },
+    { code: '잠', name: '잠재력 개발', no: '63', kw: ['잠재력', '교구', '미술활동', '음악활동', '독서', '핸드폰', '휴대폰', '노트북', '개인여가', '여가', '자유시간', '휴식', '나무표현', '표현하기', '표현활동', '쌓기컵', '칠교', '낱말카드', '구슬꿰기', '조작활동', '팝튜브', '언어활동', '꽃꽂이', '영상', '광고 시청', '클레이', '색칠', '꾸미기', '도구활동', '블록', '컵쌓기', '원예', '꽃바구니', '꽂바구니', '스카프', '보드게임', '소근육', '퍼즐', '그림', '노래', '악기', '만들기', '공예', '텃밭', '종이접기', '컬러링', '게임', '태블릿', '컴퓨터'] },
+    { code: '요', name: '주간요리활동', no: '64', kw: ['요리', '초밥', '월남쌈', '샌드위치', '김밥'] },
     { code: '특', name: '특별활동', no: '65,66', kw: ['특별활동', '기념일', '생일', '파티', '어버이날', '크리스마스'] },
     { code: '적', name: '지역사회 적응 활동', no: '67', kw: ['지역사회적응', '지역사회 적응', '지역사회연계', '적응훈련', '공공시설', '장보기', '마트', '편의점', '도서관', '주민센터', '은행', '우체국', '카페', '시장', '나들이', '외출'] },
     { code: '의', name: '의료지원', no: '104', kw: ['의료지원', '병원', '약물', '대사증후군'] },
-    { code: '직', name: '직업 준비 활동', no: '68', kw: ['직업준비', '직업체험', '작업체험', '비누', '제과제빵', '제빵'] },
+    { code: '직', name: '직업 준비 활동', no: '68', kw: ['직업준비', '직업체험', '작업체험', '작업장', '작업활동', '비누', '제과제빵', '제빵'] },
     { code: '옹', name: '권리옹호 활동', no: '69', kw: ['권리옹호', '인권', '의사결정지원'] },
     { code: '도', name: '도전행동지원', no: '70', kw: ['도전행동', '긍정행동', '심리안정', '정서지원', '행동치료', '이탈행동'] },
     { code: '가', name: '가족지원', no: '72', kw: ['가족지원', '보호자 간담회', '보호자간담회', '보호자 소통'] },
@@ -177,7 +177,10 @@
   }
 
   /** 한 시간대 글 → 맞은 코드들, 아무 규칙에도 안 맞은 조각들 */
+  // 다른 활동으로 잘못 세지 않도록 먼저 바꿔 둠 (지하철 영상 → 이동지원 아님, 유부초밥 만들기 → 요리만)
+  const PRE = [[/지하철\s*영상/g, '영상'], [/기차\s*영상/g, '영상'], [/(초밥|월남쌈|김밥|샌드위치)\s*만들기/g, '$1 요리']];
   function classify(text, rules) {
+    PRE.forEach(([a, b]) => { text = String(text).replace(a, b); });
     const sq = squash(text);
     const codes = [];
     rules.forEach((r) => {
@@ -186,7 +189,8 @@
     // 조각(쉼표·괄호·슬래시로 나눈 말) 중 어떤 키워드도 안 들어간 것 = 확인 필요
     const pieces = text.split(/[,/·()\[\]]+/).map((x) => x.trim()).filter((x) => x.length > 1);
     const miss = pieces.filter((p) => !rules.some((r) => r.kw.some((k) => k && squash(p).indexOf(squash(k)) >= 0)))
-      .filter((p) => !/^(원가정\s*(등원|귀가|하원)|.*센터\s*등원|등원|하원|귀가|기억하우스|주거지|인용홀|순국|기쁨나무|모바일핫스팟지원|\(협\).*|협)$/.test(p));
+      .filter((p) => !/^(원가정\s*(등원|귀가|하원)|.*센터\s*등원|등원|하원|귀가|기억하우스|주거지|인용홀|순국|기쁨나무|모바일핫스팟지원|\(협\).*|협)$/.test(p))
+      .filter((p) => !/(도착|출발|집합|입소|입실|귀가|출근|퇴근|맞이|인수인계)\s*$|^[\d:~\s]+$|^\*/.test(p));
     return { codes: codes, miss: miss };
   }
 
@@ -662,20 +666,20 @@
       });
     });
     const list = Object.values(words).sort((a, b) => (b.zero - a.zero) || (b.n - a.n));
-    if (!list.length) {
-      h += '<div style="margin-top:10px" class="ok"><b>시간대 ' + total + '개 모두 활동으로 셌고, 처음 보는 말도 없어요 👍</b></div>';
-    } else {
-      const zn = list.filter((x) => x.zero).length;
-      const opts = '<option value="">고르기</option><option value="-1">활동 아님 (장소·기타, 다시 안 물어봄)</option>' +
-        rules.map((r, i) => '<option value="' + i + '">' + esc(r.code + ' ' + r.name) + '</option>').join('');
-      h += '<div style="margin-top:10px"><b class="warn">처음 보는 말 ' + list.length + '개</b>' + (zn ? ' <span class="warn">(그중 ' + zn + '개는 그 시간대가 아직 하나도 안 세어졌어요)</span>' : '') +
-        '<br><span class="sub">한 번만 골라 저장하면 다음부터는 묻지 않아요. 장소 이름처럼 활동이 아니면 「활동 아님」을 고르세요.</span>' +
-        '<table style="margin-top:6px"><tr><th>처음 보는 말</th><th>나온 곳 (예)</th><th>횟수</th><th>어떤 활동?</th><th></th></tr>' +
-        list.map((z, i) => '<tr' + (z.zero ? ' style="background:#fff5f5"' : '') + '><td><input id="zw' + i + '" value="' + esc(z.w) + '" style="width:150px;font-size:14px;padding:4px"></td>' +
-          '<td style="font-size:13px">' + esc(z.ex.name) + ' ' + mo + '/' + z.ex.day + ' ' + esc(z.ex.time) + '<br><span class="sub">' + esc(z.ex.text) + '</span>' + (z.zero ? '<br><b class="warn">⚠ 이 시간대는 아직 못 셌어요</b>' : '') + '</td>' +
-          '<td>' + z.n + '</td><td><select id="zs' + i + '" style="font-size:14px;padding:4px;max-width:230px">' + opts + '</select></td>' +
-          '<td><button class="learn" data-i="' + i + '" style="padding:4px 10px;font-size:14px">저장</button></td></tr>').join('') + '</table></div>';
-    }
+    const must = list.filter((x) => x.zero), opt = list.filter((x) => !x.zero);
+    const opts = '<option value="">고르기</option><option value="-1">활동 아님 (장소·기타, 다시 안 물어봄)</option>' +
+      rules.map((r, i) => '<option value="' + i + '">' + esc(r.code + ' ' + r.name) + '</option>').join('');
+    const rowsOf = (arr, base) => '<table style="margin-top:6px"><tr><th>처음 보는 말</th><th>나온 곳 (예)</th><th>횟수</th><th>어떤 활동?</th><th></th></tr>' +
+      arr.map((z, k) => { const i = base + k; return '<tr' + (z.zero ? ' style="background:#fff5f5"' : '') + '><td><input id="zw' + i + '" value="' + esc(z.w) + '" style="width:150px;font-size:14px;padding:4px"></td>' +
+        '<td style="font-size:13px">' + esc(z.ex.name) + ' ' + mo + '/' + z.ex.day + ' ' + esc(z.ex.time) + '<br><span class="sub">' + esc(z.ex.text) + '</span></td>' +
+        '<td>' + z.n + '</td><td><select id="zs' + i + '" style="font-size:14px;padding:4px;max-width:230px">' + opts + '</select></td>' +
+        '<td><button class="learn" data-i="' + i + '" style="padding:4px 10px;font-size:14px">저장</button></td></tr>'; }).join('') + '</table>';
+    const all = must.concat(opt);
+    if (!must.length) h += '<div style="margin-top:10px" class="ok"><b>시간대 ' + total + '개 모두 활동으로 셌어요 👍</b> 꼭 확인할 것 없어요.</div>';
+    else h += '<div style="margin-top:10px"><b class="warn">꼭 확인: 아무 활동으로도 못 센 시간대의 말 ' + must.length + '개</b>' +
+      '<br><span class="sub">이 말들은 지금 개수에서 빠져 있어요. 활동을 골라 저장하면 다음부터 자동으로 세요.</span>' + rowsOf(must, 0) + '</div>';
+    if (opt.length) h += '<details style="margin-top:10px"><summary>참고: 이미 다른 말로 센 시간대에 있는 낯선 말 ' + opt.length + '개 (안 봐도 개수는 맞아요)</summary>' +
+      '<div class="sub" style="margin:6px 0 0">같은 시간대에 아는 활동이 있어서 그 시간대는 이미 세었어요. 장소 이름이 대부분이에요. 새 활동이 섞여 있으면 골라 저장하세요.</div>' + rowsOf(opt, must.length) + '</details>';
     $('summary').innerHTML = h;
     document.querySelectorAll('.learn').forEach((b) => b.onclick = () => {
       const i = b.dataset.i, w = $('zw' + i).value.trim(), k = $('zs' + i).value;
