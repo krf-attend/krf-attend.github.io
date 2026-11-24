@@ -465,12 +465,25 @@
   }
 
   /** 주거 칸 줄들 → 아침/저녁. '(야간)' 줄 → 없으면 '입소 후·입실 후' 줄 → 없으면 시각(15시 이후) */
+  // 아침/저녁 구분 단서 — 스캔본에서 나눈 결과가 분명한지 확인할 때 씀
+  const EVE = /(오후|입소|입실|하원|귀가|저녁|샤워|취침|잠자리)/;
+  const MOR = /(기상|밤새|밤\s*사이|아침\s*(식사|밥|약)|등원|셔틀|센터\s*로\s*이동|일어나)/;
+  function hourOf(l) { const m = String(l).replace(/\d{1,2}\s*\/\s*\d{1,2}/g, '').match(/(\d{1,2})\s*(:|시\s*(?!간))/); return m ? +m[1] : -1; }
+  /** 나눈 결과가 분명하면 '' , 아니면 확인할 이유 */
+  function splitDoubt(morning, night) {
+    if (!morning.length && !night.length) return '글을 못 읽었어요 — 종이를 보고 직접 넣어 주세요';
+    const eveInM = morning.filter((l) => EVE.test(l) || hourOf(l) >= 15 && hourOf(l) <= 23);
+    const morInN = night.filter((l) => MOR.test(l));
+    if (eveInM.length) return '아침 쪽에 저녁 일이 있어요 (' + eveInM[0].slice(0, 15) + '…) — 「(야간)」 줄을 그 위로 옮겨 주세요';
+    if (morInN.length) return '저녁 쪽에 아침 일이 있어요 (' + morInN[0].slice(0, 15) + '…) — 「(야간)」 줄을 그 아래로 옮겨 주세요';
+    return '';
+  }
   function splitNight(body) {
     body = body.map((x) => String(x).trim()).filter(Boolean);
     const isNight = (l) => /^[\[(（]?\s*야\s*간\s*[\])）]?\s*$/.test(l) || /^[\[(（]\s*야\s*간\s*[\])）]/.test(l);
     let cut = body.findIndex(isNight), how = '(야간) 표시';
     if (cut < 0) { cut = body.findIndex((l) => /^-?\s*(입소|입실)\s*후/.test(l)); how = '입소·입실 후'; }
-    if (cut < 0) { cut = body.findIndex((l) => { const h = l.match(/(\d{1,2})\s*[:시]/); return h && +h[1] >= 15 && +h[1] <= 23; }); how = '시각'; }
+    if (cut < 0) { cut = body.findIndex((l) => EVE.test(l) || hourOf(l) >= 15); how = '시각'; }
     if (cut < 0) { cut = body.length; how = '아침만'; }
     const strip = (l) => l.replace(/^[-#•·\s]+/, '').replace(/^[\[(（]?\s*야\s*간\s*[\])）]?\s*/, '');
     const sent = (arr) => arr.map(strip).filter(Boolean);
@@ -576,7 +589,7 @@
     return { wb: wb, res: res, names: names.filter((n) => res.people[n]) };
   }
 
-  const api = { J_RULES, hwpText, readHandover, splitNight, classifyJ, analyzeJ, buildJWorkbook, calSheet };
+  const api = { J_RULES, hwpText, readHandover, splitNight, splitDoubt, classifyJ, analyzeJ, buildJWorkbook, calSheet };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.JConv = api;
 })(this);
 </script>
@@ -719,9 +732,11 @@
       if (r.date) cur = r.date;
       if (!r.body) return;
       const sp = root.JConv.splitNight(r.body);
-      const warn = r.how === '추정' || sp.how !== '(야간) 표시' && sp.how !== '입소·입실 후';
+      // 확인이 꼭 필요한 날만 이유를 붙임 (잘 나뉜 날은 '')
+      const warn = !cur ? '날짜를 못 읽었어요' : root.JConv.splitDoubt(sp.morning, sp.night) ||
+        (r.how === '추정' ? '표 칸을 못 찾았어요 — 낮활동 글이 섞였으면 지워 주세요' : '');
       out.push({ year: cur ? cur[0] : 0, month: cur ? cur[1] : 0, day: cur ? cur[2] : 0, text: r.body.join('\n'),
-                 how: r.how === '추정' ? '칸 경계 추정' : sp.how, warn: warn || !cur });
+                 how: r.how === '추정' ? '칸 경계 추정' : sp.how, warn: warn });
     });
     return out;
   }
@@ -914,16 +929,16 @@
     if (!el) { el = document.createElement('div'); el.id = 'jscanlist'; $('jscan').appendChild(el); }
     const warn = sc.filter((r) => r.warn), ok = sc.filter((r) => !r.warn);
     const row = (r) => { const i = jrecs.indexOf(r); return '<div style="border-top:1px solid #e3e6ea;padding:8px 0"><b>' + esc(r.name) + ' ' + r.month + '/' + r.day + '</b> ' +
-      (r.warn ? '<span class="warn">⚠ ' + esc(r.how) + ' — 「(야간)」 줄을 저녁이 시작하는 곳으로 옮겨 주세요</span>' : '<span class="ok">✓ ' + esc(r.how) + '</span>') +
+      (r.warn ? '<span class="warn">⚠ ' + esc(r.warn) + '</span>' : '<span class="ok">✓ 아침 ' + r.morning.length + '줄 · 저녁 ' + r.night.length + '줄</span>') +
       '<textarea data-j="' + i + '" class="jscan-t" style="height:' + Math.min(320, 40 + 20 * (r.morning.length + r.night.length + 1)) + 'px;margin-top:4px">' +
       esc(r.morning.concat(['(야간)'], r.night).join('\n')) + '</textarea></div>'; };
     el.innerHTML = '<b>스캔본 확인</b> <span class="sub">(주거서비스 칸에서 읽은 글. 틀린 글자는 고쳐도 되고, 「(야간)」 줄 위는 야간(아침), 아래는 야간(저녁)으로 세요)</span>' +
-      (warn.length ? '<div class="warn" style="margin-top:6px">확인이 필요한 날 ' + warn.length + '일</div>' + warn.map(row).join('') : '<div class="ok" style="margin-top:6px">모든 날 아침/저녁을 나눴어요 👍</div>') +
+      (warn.length ? '<div class="warn" style="margin-top:6px">꼭 볼 날 ' + warn.length + '일 <span class="sub">(나머지 ' + ok.length + '일은 아침·저녁이 분명하게 나뉘어서 안 봐도 돼요)</span></div>' + warn.map(row).join('') : '<div class="ok" style="margin-top:6px">모든 날 아침/저녁을 나눴어요 👍</div>') +
       (ok.length ? '<details style="margin-top:6px"><summary>잘 나뉜 날 ' + ok.length + '일 (펼쳐서 확인 가능)</summary>' + ok.map(row).join('') + '</details>' : '');
     el.querySelectorAll('.jscan-t').forEach((t) => t.oninput = () => {
       const r = jrecs[+t.dataset.j]; if (!r) return;
       const sp = JConv.splitNight(t.value.split('\n'));
-      r.morning = sp.morning; r.night = sp.night; r.how = sp.how; r.warn = sp.how !== '(야간) 표시';
+      r.morning = sp.morning; r.night = sp.night; r.how = sp.how; r.warn = JConv.splitDoubt(sp.morning, sp.night);
       jrender();
     });
   }
