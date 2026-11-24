@@ -1714,7 +1714,7 @@
   function renderConv() {
     $('filters').innerHTML = ''; $('stat').textContent = '';
     if ($('view').querySelector('iframe.conv')) return;          // 보던 내용 유지
-    $('view').innerHTML = '<iframe class="conv" src="conv.html?v=' + VER + '" style="display:block;width:100%;height:calc(100vh - 76px);border:0;background:#f4f5f7"></iframe>';
+    $('view').innerHTML = '<iframe class="conv" src="conv.html?t=' + Date.now() + '" style="display:block;width:100%;height:calc(100vh - 76px);border:0;background:#f4f5f7"></iframe>';
   }
   function render() {
     setYm();
