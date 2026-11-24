@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>기록지 → 사업실적 변환</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root { --b:#3182f6; --bg:#f4f5f7; --fg:#191f28; --mut:#6b7684; --red:#e5484d; --ok:#12855a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:'Pretendard Variable',Pretendard,-apple-system,'Malgun Gothic',sans-serif; }
+  body.emb main { padding-top:8px; } body.emb .head { display:none; }
+  main { max-width:1100px; margin:0 auto; padding:24px 20px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin-bottom:20px; line-height:1.6; }
+  .card { background:#fff; border:1px solid #e3e6ea; border-radius:12px; padding:18px 20px; margin-bottom:16px; }
+  .step { font-weight:800; color:var(--b); margin-bottom:10px; }
+  #drop { border:2px dashed #aac4ea; border-radius:12px; padding:34px 20px; text-align:center; font-size:18px; color:#456; cursor:pointer; background:#fbfdff; }
+  #drop.on { background:#eaf2fd; border-color:var(--b); }
+  #drop small { display:block; margin-top:8px; font-size:14px; color:var(--mut); }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { border:1px solid #e3e6ea; padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:#f4f6f8; font-weight:700; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  input[type=number] { width:80px; font-size:16px; padding:6px; }
+  button { font:inherit; font-size:16px; padding:10px 18px; border-radius:8px; border:1px solid #ccd; background:#fff; cursor:pointer; }
+  button.main { background:var(--b); color:#fff; border-color:var(--b); font-weight:700; font-size:18px; padding:12px 26px; }
+  button:disabled { opacity:.45; cursor:default; }
+  .warn { color:var(--red); }
+  .ok { color:var(--ok); }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; background:#eef3fb; color:#245; font-size:13px; margin:2px 2px 0 0; }
+  .tag.r { background:#fdeceb; color:var(--red); }
+  textarea { width:100%; height:330px; font-family:Consolas,monospace; font-size:13px; line-height:1.5; }
+  details summary { cursor:pointer; font-weight:700; }
+  .grid td { text-align:center; font-size:13px; min-width:34px; }
+  .grid td.d { background:#eef3fb; font-weight:700; }
+  .hidden { display:none; }
+  .codes { font-size:13px; line-height:1.9; }
+</style>
+</head>
+<body>
+<main>
+  <div class="head"><h1>통합돌봄 기록지 → 사업실적 월별 달력</h1></div>
+  <div class="sub">선생님들이 쓴 <b>월별 통합돌봄서비스 제공 계획 및 기록지</b> 엑셀을 넣으면, 사업실적 파일의 <b>월 시트 모양(한 글자 코드)</b>과 개수를 자동으로 만들어요.<br>
+  파일은 이 컴퓨터 안에서만 읽어요. 인터넷으로 보내지 않아요.</div>
+
+  <div class="card">
+    <div class="step">① 기록지 엑셀 넣기 (같은 달 이용인 여러 명 한꺼번에)</div>
+    <div id="drop">여기로 엑셀 파일을 끌어다 놓거나 눌러서 고르세요
+      <small>.xlsx 여러 개 가능 · 다시 넣으면 같은 이용인은 새 파일로 바뀌어요</small></div>
+    <input id="file" type="file" accept=".xlsx,.xls" multiple class="hidden">
+    <div id="files" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card">
+    <div class="step">② 확인하기</div>
+    <div class="row" style="margin-bottom:12px">
+      <label>연도 <input id="year" type="number"></label>
+      <label>월 <input id="month" type="number" min="1" max="12"></label>
+      <button id="clear">파일 모두 지우기</button>
+    </div>
+    <div id="summary" class="codes">기록지를 넣으면 여기에 요약이 나와요.</div>
+    <div id="preview" style="margin-top:14px;overflow:auto"></div>
+  </div>
+
+  <div class="card">
+    <div class="step">③ 엑셀로 내려받기</div>
+    <div class="row">
+      <button id="dl" class="main" disabled>사업실적 달력 엑셀 받기</button>
+      <span class="sub" style="margin:0">시트: <b>N월</b>(달력·개수) · <b>확인용</b>(시간대별로 어떻게 셌는지) · <b>변환규칙</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>변환 규칙 보기·고치기 (어떤 말이 들어가면 어떤 코드로 셀지)</summary>
+      <div class="sub" style="margin:10px 0">보통은 고칠 일이 없어요. 「못 센 시간대」에서 「기억하기」를 누르면 여기에 자동으로 더해져요. 직접 고치려면 한 줄에 <code>코드 | 세부사업명 | 번호 | 말,말,말</code> 형식으로 쓰세요. 이 컴퓨터 브라우저에 저장돼요.</div>
+      <textarea id="rules"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="saveRules">규칙 저장하고 다시 계산</button>
+        <button id="resetRules">처음 규칙으로</button>
+        <span id="ruleMsg" class="ok"></span>
+      </div>
+      <div class="sub" style="margin-top:12px">이용인 칸 순서 (사업실적 시트와 같게, 쉼표로):</div>
+      <input id="order" style="width:100%;font-size:15px;padding:6px">
+    </details>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
+<script>/* 통합돌봄 기록지(서식1) → 사업실적 월별 달력 변환 핵심 로직 (브라우저·node 공용) */
+(function (root) {
+  // 사업실적 '월' 시트의 코드 순서 그대로. kw: 기록지에 나오면 이 코드로 세는 말들
+  const DEFAULT_RULES = [
+    { code: '이', name: '이동지원', no: '101', kw: ['이동지원', '이동', '택시', '대중교통', '도보', '버스', '지하철', '송영', '차량'] },
+    { code: '생', name: '개인위생관리', no: '102', kw: ['위생지원', '위생', '양치', '신변처리', '의복관리', '손씻기', '세수', '세면', '샤워', '화장실', '옷갈아입기'] },
+    { code: '통', name: '의사소통훈련', no: '55', kw: ['의사소통', '하루일과나누기', '주말일과나누기', '일과나누기', '티타임', 'AAC', '수어', '요구사항적기'] },
+    { code: '교', name: '이용자교육', no: '56', kw: ['이용자교육', '안전교육', '성교육', '소방훈련', '식사예절', '생활예절', '경제교육'] },
+    { code: '중', name: '중식서비스', no: '59', kw: ['중식', '점심'] },
+    { code: '청', name: '청결유지', no: '57', kw: ['청결유지', '대청소', '소독'] },
+    { code: '간', name: '주간 간식 지원', no: '58', kw: ['간식'] },
+    { code: '탐', name: '지역사회탐방', no: '60,61', kw: ['지역사회탐방', '캠프', '외부수업'] },
+    { code: '체', name: '생활체육', no: '103', kw: ['생활체육', '체육', '신체활동', '걷기', '체조', '요가', '수영', '볼링', '다이어트댄스', '댄스', '산책', '트레킹', '필라테스', '계단운동', '달리기', '스트레칭'] },
+    { code: 'M', name: '주간문화 활동', no: '62', kw: ['주간문화', '문화활동', '영화', '미술관', '전시', '수족관', '놀이공원', '공연'] },
+    { code: '잠', name: '잠재력 개발', no: '63', kw: ['잠재력', '교구', '미술활동', '음악활동', '독서', '핸드폰', '휴대폰', '노트북', '개인여가', '클레이', '색칠', '꾸미기', '도구활동', '블록', '컵쌓기', '원예', '꽃바구니', '꽂바구니', '스카프', '보드게임', '소근육', '퍼즐', '그림', '노래', '악기', '만들기', '공예', '텃밭', '종이접기', '컬러링', '게임', '태블릿', '컴퓨터'] },
+    { code: '요', name: '주간요리활동', no: '64', kw: ['요리'] },
+    { code: '특', name: '특별활동', no: '65,66', kw: ['특별활동', '기념일', '생일', '파티', '어버이날', '크리스마스'] },
+    { code: '적', name: '지역사회 적응 활동', no: '67', kw: ['지역사회적응', '지역사회 적응', '지역사회연계', '적응훈련', '공공시설', '장보기', '마트', '편의점', '도서관', '주민센터', '은행', '우체국', '카페', '시장', '나들이', '외출'] },
+    { code: '의', name: '의료지원', no: '104', kw: ['의료지원', '병원', '약물', '대사증후군'] },
+    { code: '직', name: '직업 준비 활동', no: '68', kw: ['직업준비', '직업체험', '작업체험', '비누', '제과제빵', '제빵'] },
+    { code: '옹', name: '권리옹호 활동', no: '69', kw: ['권리옹호', '인권', '의사결정지원'] },
+    { code: '도', name: '도전행동지원', no: '70', kw: ['도전행동', '긍정행동', '심리안정', '정서지원', '행동치료'] },
+    { code: '가', name: '가족지원', no: '72', kw: ['가족지원', '보호자 간담회', '보호자간담회', '보호자 소통'] },
+    { code: '합', name: '연합 활동', no: '73', kw: ['연합활동', '연합 활동', '숲체험', '송년회'] }
+  ];
+  const DEFAULT_ORDER = ['강경민', '강다빈', '조승연', '문종철'];
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+
+  const norm = (s) => String(s == null ? '' : s).replace(/\r/g, '');
+  const squash = (s) => String(s).replace(/[\s.·ㆍ\-_'"`]+/g, '');   // 띄어쓰기·점·하이픈은 무시하고 비교 (이 동 지 원 = 이동지원)
+
+  /** 규칙 글(한 줄에 '코드|사업명|번호|키워드,키워드') ↔ 배열 */
+  function rulesToText(rules) {
+    return rules.map((r) => [r.code, r.name, r.no, r.kw.join(',')].join(' | ')).join('\n');
+  }
+  function textToRules(t) {
+    const out = [];
+    norm(t).split('\n').forEach((line) => {
+      const p = line.split('|').map((x) => x.trim());
+      if (p.length < 4 || !p[0] || !p[1]) return;
+      out.push({ code: p[0], name: p[1], no: p[2], kw: p[3].split(',').map((x) => x.trim()).filter(Boolean) });
+    });
+    return out;
+  }
+
+  /** 시간대 줄로 나누기: 'HH:MM~HH:MM 내용' 줄이 새 시간대, 들여쓴 줄은 앞 시간대에 붙음 */
+  function slots(text) {
+    const out = [];
+    norm(text).split('\n').forEach((raw) => {
+      const line = raw.trim();
+      if (!line) return;
+      const m = line.match(/^(\d{1,2}[:：]\d{2})\s*[~∼\-]\s*(\d{1,2}[:：]\d{2})\s*(.*)$/);
+      if (m) out.push({ time: m[1].replace('：', ':') + '~' + m[2].replace('：', ':'), text: m[3] });
+      else if (out.length) out[out.length - 1].text += ' ' + line;
+      else out.push({ time: '', text: line });
+    });
+    return out;
+  }
+
+  /** 한 시간대 글 → 맞은 코드들, 아무 규칙에도 안 맞은 조각들 */
+  function classify(text, rules) {
+    const sq = squash(text);
+    const codes = [];
+    rules.forEach((r) => {
+      if (r.kw.some((k) => k && sq.indexOf(squash(k)) >= 0)) codes.push(r.code);
+    });
+    // 조각(쉼표·괄호·슬래시로 나눈 말) 중 어떤 키워드도 안 들어간 것 = 확인 필요
+    const pieces = text.split(/[,/·()\[\]]+/).map((x) => x.trim()).filter((x) => x.length > 1);
+    const miss = pieces.filter((p) => !rules.some((r) => r.kw.some((k) => k && squash(p).indexOf(squash(k)) >= 0)))
+      .filter((p) => !/^(원가정\s*(등원|귀가|하원)|.*센터\s*등원|등원|하원|귀가|기억하우스|주거지|인용홀|순국|기쁨나무|모바일핫스팟지원|\(협\).*|협)$/.test(p));
+    return { codes: codes, miss: miss };
+  }
+
+  function cellText(ws, addr) {
+    const c = ws[addr];
+    return c ? norm(c.w != null && typeof c.v !== 'string' ? c.w : c.v) : '';
+  }
+  function num(ws, addr) {
+    const c = ws[addr];
+    if (!c || c.v === '' || c.v == null) return 0;
+    const n = Number(c.v);
+    return isNaN(n) ? 0 : n;
+  }
+
+  /** 기록지 엑셀(워크북) 하나 읽기 */
+  function readRecord(XLSX, wb, fileName) {
+    const sn = wb.SheetNames.find((n) => /서식1|기록지/.test(n)) || wb.SheetNames[0];
+    const ws = wb.Sheets[sn];
+    const title = cellText(ws, 'A1');
+    const name = cellText(ws, 'D3').trim();
+    const writer = cellText(ws, 'D2').trim();
+    let year = 0, month = 0;
+    let m = title.match(/(\d{4})\s*년\s*(\d{1,2})\s*월/);
+    if (m) { year = +m[1]; month = +m[2]; }
+    if (!month) { m = title.match(/(\d{1,2})\s*월/); if (m) month = +m[1]; }
+    if (!year) { m = cellText(ws, 'H2').match(/(\d{4})/); if (m) year = +m[1]; }
+    if (!year) { m = String(fileName || '').match(/(20\d{2})/); if (m) year = +m[1]; }
+    if (!month) { m = String(fileName || '').match(/(\d{1,2})\s*월/); if (m) month = +m[1]; }
+    // 머리줄('날짜') 찾기
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    let head = 8;
+    for (let r = 1; r <= Math.min(range.e.r + 1, 20); r++) if (cellText(ws, 'A' + r).trim() === '날짜') { head = r; break; }
+    const days = [];
+    for (let r = head + 1; r <= range.e.r + 1; r++) {
+      const a = cellText(ws, 'A' + r).trim();
+      if (/합계/.test(a)) break;
+      const d = parseInt(a, 10);
+      if (!d || d < 1 || d > 31) continue;
+      const rec = cellText(ws, 'G' + r);
+      const note = cellText(ws, 'J' + r).trim();
+      const hours = num(ws, 'L' + r) + num(ws, 'M' + r) + num(ws, 'N' + r) + num(ws, 'O' + r);
+      days.push({ day: d, staff: cellText(ws, 'C' + r).trim(), record: rec, note: note, hours: hours });
+    }
+    return { file: fileName, sheet: sn, name: name, writer: writer, year: year, month: month, days: days };
+  }
+
+  /** 읽은 기록지들 + 규칙 → 사람별·날짜별 코드 */
+  function analyze(records, rules) {
+    const people = {};
+    const check = [];
+    records.forEach((rc) => {
+      const p = people[rc.name] || (people[rc.name] = {});
+      rc.days.forEach((d) => {
+        const absent = d.hours === 0 && !slots(d.record).some((s) => s.time);
+        if (absent) {
+          p[d.day] = { absent: true, codes: [], note: d.note || '결석' };
+          check.push({ name: rc.name, day: d.day, time: '', text: (d.record || d.note || '').replace(/\s+/g, ' ').trim(), codes: '결석', miss: '' });
+          return;
+        }
+        const seen = [];
+        slots(d.record).forEach((s) => {
+          const c = classify(s.text, rules);
+          c.codes.forEach((x) => { if (seen.indexOf(x) < 0) seen.push(x); });
+          check.push({ name: rc.name, day: d.day, time: s.time, text: s.text.replace(/\s+/g, ' ').trim(), codes: c.codes.join(' '), miss: c.miss.join(', ') });
+        });
+        p[d.day] = { absent: false, codes: seen, note: d.note, coop: /\(협\)/.test(d.note + d.record) };
+      });
+    });
+    return { people: people, check: check };
+  }
+
+  /** 사업실적 '월' 시트 모양으로 엑셀 만들기 */
+  function buildWorkbook(XLSX, records, rules, opt) {
+    opt = opt || {};
+    const year = opt.year, month = opt.month;
+    const res = analyze(records, rules);
+    // 사업실적 시트와 칸이 맞도록 기본 4명 자리는 항상 같은 순서로 (기록지가 없는 사람은 빈 칸)
+    const order = opt.order && opt.order.length ? opt.order : DEFAULT_ORDER;
+    const names = order.slice().concat(Object.keys(res.people).filter((n) => order.indexOf(n) < 0));
+    const N = names.length;
+    const maxCodes = Math.max(10, ...Object.values(res.people).flatMap((p) => Object.values(p).map((x) => x.codes.length)));
+
+    // 열: A(비움) B=일요일, 월~금 각 N칸, W=토요일
+    const colOfDow = (dow) => (dow === 0 ? 1 : dow === 6 ? 2 + 5 * N : 2 + (dow - 1) * N);
+    const lastCol = 2 + 5 * N;
+    const sideCol = lastCol + 1;          // 코드표 시작 열
+    const aoa = [];
+    const set = (r, c, v) => { while (aoa.length <= r) aoa.push([]); aoa[r][c] = v; };
+    const styles = {};
+    const st = (r, c, s) => { styles[XLSX.utils.encode_cell({ r: r, c: c })] = s; };
+
+    set(0, Math.floor(lastCol / 2), month + '월');
+    set(0, lastCol, year + '년');
+    set(1, 1, '일');
+    for (let dow = 1; dow <= 5; dow++) set(1, colOfDow(dow), WEEK[dow]);
+    set(1, lastCol, '토');
+    for (let dow = 1; dow <= 5; dow++) names.forEach((n, i) => set(2, colOfDow(dow) + i, n));
+
+    const first = new Date(year, month - 1, 1).getDay();
+    const last = new Date(year, month, 0).getDate();
+    const weeks = Math.ceil((first + last) / 7);
+    const block = 1 + maxCodes;
+    const codeRows = [];
+    for (let w = 0; w < weeks; w++) {
+      const r0 = 3 + w * block;
+      for (let dow = 0; dow < 7; dow++) {
+        const day = w * 7 + dow - first + 1;
+        if (day < 1 || day > last) continue;
+        const c = colOfDow(dow);
+        set(r0, c, day);
+        st(r0, c, { font: { bold: true }, fill: { fgColor: { rgb: 'EEF3FB' } } });
+        if (dow === 0 || dow === 6) continue;
+        names.forEach((n, i) => {
+          const p = res.people[n] && res.people[n][day];
+          if (!p) return;
+          if (p.absent) { set(r0 + 1, c + i, '결석'); st(r0 + 1, c + i, { font: { color: { rgb: 'C0392B' } } }); return; }
+          p.codes.forEach((code, k) => set(r0 + 1 + k, c + i, code));
+        });
+      }
+      codeRows.push([r0 + 1, r0 + maxCodes]);
+    }
+    const lastRow = 3 + weeks * block - 1;
+    // 오른쪽 코드표 + 개수(명) + 횟수(=명/이용인 수), 원래 시트처럼 COUNTIF 수식
+    set(1, sideCol, '번호'); set(1, sideCol + 1, '세부사업명'); set(1, sideCol + 2, '코드'); set(1, sideCol + 3, '명'); set(1, sideCol + 4, '횟수');
+    const realN = names.length;
+    const L = (c) => XLSX.utils.encode_col(c);
+    const rangeRef = '$' + L(1) + '$4:$' + L(lastCol) + '$' + (lastRow + 1);
+    const formulas = {};
+    rules.forEach((r, i) => {
+      const row = 2 + i;
+      set(row, sideCol, r.no); set(row, sideCol + 1, r.name); set(row, sideCol + 2, r.code);
+      let cnt = 0;
+      Object.values(res.people).forEach((p) => Object.values(p).forEach((d) => { if (d.codes.indexOf(r.code) >= 0) cnt++; }));
+      set(row, sideCol + 3, cnt);
+      set(row, sideCol + 4, Math.round(cnt / realN * 100) / 100);
+      formulas[XLSX.utils.encode_cell({ r: row, c: sideCol + 3 })] = 'COUNTIF(' + rangeRef + ',"' + r.code + '")';
+      formulas[XLSX.utils.encode_cell({ r: row, c: sideCol + 4 })] = L(sideCol + 3) + (row + 1) + '/' + realN;
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    Object.keys(formulas).forEach((a) => { ws[a].f = formulas[a]; });
+    // 서식
+    const thin = { style: 'thin', color: { rgb: 'BBBBBB' } };
+    const border = { top: thin, bottom: thin, left: thin, right: thin };
+    for (let r = 1; r <= lastRow; r++) for (let c = 1; c <= lastCol; c++) {
+      const a = XLSX.utils.encode_cell({ r: r, c: c });
+      if (!ws[a]) ws[a] = { t: 's', v: '' };
+      ws[a].s = Object.assign({ border: border, alignment: { horizontal: 'center', vertical: 'center' }, font: { sz: 10 } }, styles[a] || {});
+      if (r <= 2) ws[a].s = Object.assign({}, ws[a].s, { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'F4F6F8' } } });
+    }
+    for (let i = 0; i <= rules.length; i++) for (let c = sideCol; c <= sideCol + 4; c++) {
+      const a = XLSX.utils.encode_cell({ r: 1 + i, c: c });
+      if (ws[a]) ws[a].s = { border: border, font: { bold: i === 0, sz: 10 }, alignment: { horizontal: 'center' }, fill: i === 0 ? { fgColor: { rgb: 'F4F6F8' } } : undefined };
+    }
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(lastRow, rules.length + 2), c: sideCol + 4 } });
+    ws['!cols'] = [{ wch: 2 }, { wch: 6 }].concat(Array(5 * N).fill({ wch: 7 })).concat([{ wch: 6 }, { wch: 7 }, { wch: 16 }, { wch: 5 }, { wch: 6 }, { wch: 6 }]);
+    ws['!merges'] = [{ s: { r: 1, c: 1 }, e: { r: 2, c: 1 } }, { s: { r: 1, c: lastCol }, e: { r: 2, c: lastCol } }];
+    for (let dow = 1; dow <= 5; dow++) ws['!merges'].push({ s: { r: 1, c: colOfDow(dow) }, e: { r: 1, c: colOfDow(dow) + N - 1 } });
+    ws['!freeze'] = { xSplit: 0, ySplit: 3 };
+
+    // 확인용 시트: 시간대마다 어떤 코드로 셌는지, 못 알아본 말
+    const chk = [['이용인', '날짜', '시간', '활동기록', '센 코드', '확인 필요(규칙에 없는 말)']]
+      .concat(res.check.map((x) => [x.name, month + '/' + x.day, x.time, x.text, x.codes, x.miss]));
+    const ws2 = XLSX.utils.aoa_to_sheet(chk);
+    ws2['!cols'] = [{ wch: 8 }, { wch: 7 }, { wch: 12 }, { wch: 60 }, { wch: 10 }, { wch: 30 }];
+    ws2['!autofilter'] = { ref: 'A1:F' + chk.length };
+    for (let r = 0; r < chk.length; r++) for (let c = 0; c < 6; c++) {
+      const a = XLSX.utils.encode_cell({ r: r, c: c });
+      if (!ws2[a]) continue;
+      ws2[a].s = { font: { bold: r === 0, sz: 10, color: c === 5 && chk[r][5] ? { rgb: 'C0392B' } : undefined }, alignment: { vertical: 'top', wrapText: c === 3 }, fill: r === 0 ? { fgColor: { rgb: 'F4F6F8' } } : undefined };
+    }
+    // 규칙 시트
+    const ws3 = XLSX.utils.aoa_to_sheet([['코드', '세부사업명', '번호', '이 말이 들어가면 셈']].concat(rules.map((r) => [r.code, r.name, r.no, r.kw.join(', ')])));
+    ws3['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 7 }, { wch: 80 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, month + '월');
+    XLSX.utils.book_append_sheet(wb, ws2, '확인용');
+    XLSX.utils.book_append_sheet(wb, ws3, '변환규칙');
+    return { wb: wb, res: res, names: names, missing: names.filter((n) => !res.people[n]) };
+  }
+
+  const api = { DEFAULT_RULES, DEFAULT_ORDER, rulesToText, textToRules, slots, classify, readRecord, analyze, buildWorkbook };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Conv = api;
+})(this);
+</script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  try { if (window.top !== window) document.body.classList.add('emb'); } catch (e) { document.body.classList.add('emb'); }
+  const store = {
+    get(k) { try { return localStorage.getItem('krfconv.' + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem('krfconv.' + k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem('krfconv.' + k); } catch (e) {} }
+  };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let records = [];   // 읽은 기록지 (이용인별 1개)
+  let rules = Conv.DEFAULT_RULES;
+  let order = Conv.DEFAULT_ORDER.slice();
+
+  const savedRules = store.get('rules');
+  if (savedRules) { const r = Conv.textToRules(savedRules); if (r.length) rules = r; }
+  const savedOrder = store.get('order');
+  if (savedOrder) order = savedOrder.split(',').map((x) => x.trim()).filter(Boolean);
+  $('rules').value = Conv.rulesToText(rules);
+  $('order').value = order.join(', ');
+
+  async function addFiles(list) {
+    for (const f of list) {
+      try {
+        const wb = XLSX.read(await f.arrayBuffer(), { cellText: true });
+        const rc = Conv.readRecord(XLSX, wb, f.name);
+        if (!rc.name || !rc.days.length) { rc.error = '기록지 모양이 아니에요 (이용인 이름 또는 날짜 칸을 못 찾음)'; }
+        records = records.filter((x) => x.name !== rc.name || !rc.name);
+        records.push(rc);
+      } catch (e) {
+        records.push({ file: f.name, error: '읽지 못했어요: ' + e.message, days: [] });
+      }
+    }
+    const ok = records.filter((r) => !r.error && r.month);
+    if (ok.length) {
+      const m = {}; ok.forEach((r) => { const k = r.year + '-' + r.month; m[k] = (m[k] || 0) + 1; });
+      const top = Object.keys(m).sort((a, b) => m[b] - m[a])[0].split('-');
+      $('year').value = top[0]; $('month').value = top[1];
+    }
+    render();
+  }
+
+  function render() {
+    const ok = records.filter((r) => !r.error);
+    const y = +$('year').value, mo = +$('month').value;
+    $('files').innerHTML = records.length ? '<table><tr><th>파일</th><th>이용인</th><th>작성자</th><th>월</th><th>기록된 날</th><th></th></tr>' +
+      records.map((r, i) => '<tr><td>' + esc(r.file) + '</td>' + (r.error ? '<td colspan="4" class="warn">' + esc(r.error) + '</td>' :
+        '<td><b>' + esc(r.name) + '</b></td><td>' + esc(r.writer) + '</td><td' + ((r.year !== y || r.month !== mo) && y ? ' class="warn"' : '') + '>' + r.year + '년 ' + r.month + '월</td><td>' + r.days.length + '일</td>') +
+        '<td><button data-i="' + i + '" class="rm" style="padding:2px 10px;font-size:13px">빼기</button></td></tr>').join('') + '</table>' : '';
+    document.querySelectorAll('.rm').forEach((b) => b.onclick = () => { records.splice(+b.dataset.i, 1); render(); });
+    $('dl').disabled = !ok.length || !y || !mo;
+    if (!ok.length) { $('summary').textContent = '기록지를 넣으면 여기에 요약이 나와요.'; $('preview').innerHTML = ''; return; }
+
+    const use = ok.filter((r) => r.year === y && r.month === mo);
+    const out = Conv.buildWorkbook(XLSX, use, rules, { year: y, month: mo, order: order });
+    const miss = {};
+    out.res.check.forEach((x) => { if (x.miss) x.miss.split(', ').forEach((m) => { miss[m] = (miss[m] || 0) + 1; }); });
+    const counts = rules.map((r) => {
+      let n = 0;
+      Object.values(out.res.people).forEach((p) => Object.values(p).forEach((d) => { if (d.codes.indexOf(r.code) >= 0) n++; }));
+      return { r: r, n: n };
+    });
+    let h = '';
+    if (ok.length > use.length) h += '<div class="warn">⚠ ' + y + '년 ' + mo + '월이 아닌 기록지 ' + (ok.length - use.length) + '개는 빼고 계산했어요.</div>';
+    if (out.missing.length) h += '<div class="warn">⚠ 기록지가 없는 이용인: ' + out.missing.map(esc).join(', ') + ' (그 칸은 비워 둬요)</div>';
+    h += '<div style="margin-top:6px"><b>개수 (사람×날짜, 하루에 여러 번 나와도 1)</b><br>' +
+      counts.map((c) => '<span class="tag">' + esc(c.r.code) + ' ' + esc(c.r.name) + ' <b>' + c.n + '</b></span>').join('') + '</div>';
+    // 아무 활동으로도 못 센 시간대만 보여 줌 (장소 이름 등은 같은 줄의 다른 말로 이미 세어지므로 신경 쓸 필요 없음)
+    const zero = out.res.check.filter((x) => x.time && !x.codes);
+    const total = out.res.check.filter((x) => x.time).length;
+    if (!zero.length) {
+      h += '<div style="margin-top:10px" class="ok"><b>시간대 ' + total + '개 모두 활동으로 셌어요 👍</b> 따로 확인할 것 없어요.</div>';
+    } else {
+      const opts = rules.map((r, i) => '<option value="' + i + '">' + esc(r.code + ' ' + r.name) + '</option>').join('');
+      h += '<div style="margin-top:10px"><b class="warn">못 센 시간대 ' + zero.length + '개</b> <span class="sub">(전체 ' + total + '개 중) — 활동을 고르고 「기억하기」를 누르면 다음부터 자동으로 세요</span>' +
+        '<table style="margin-top:6px"><tr><th>이용인</th><th>날짜</th><th>시간</th><th>활동기록</th><th>기억할 말</th><th>활동</th><th></th></tr>' +
+        zero.map((z, i) => {
+          const word = (z.miss.split(', ')[0] || z.text).replace(/\(.*$/, '').trim().slice(0, 20);
+          return '<tr><td>' + esc(z.name) + '</td><td>' + mo + '/' + z.day + '</td><td>' + esc(z.time) + '</td><td>' + esc(z.text) + '</td>' +
+            '<td><input id="zw' + i + '" value="' + esc(word) + '" style="width:130px;font-size:14px;padding:4px"></td>' +
+            '<td><select id="zs' + i + '" style="font-size:14px;padding:4px"><option value="">고르기</option>' + opts + '</select></td>' +
+            '<td><button class="learn" data-i="' + i + '" style="padding:4px 10px;font-size:14px">기억하기</button></td></tr>';
+        }).join('') + '</table></div>';
+    }
+    $('summary').innerHTML = h;
+    document.querySelectorAll('.learn').forEach((b) => b.onclick = () => {
+      const i = b.dataset.i, w = $('zw' + i).value.trim(), k = $('zs' + i).value;
+      if (!w || k === '') { b.textContent = '말·활동을 넣어 주세요'; return; }
+      rules = rules.map((r, j) => j === +k ? Object.assign({}, r, { kw: r.kw.concat(r.kw.indexOf(w) < 0 ? [w] : []) }) : r);
+      $('rules').value = Conv.rulesToText(rules);
+      store.set('rules', $('rules').value);
+      render();
+    });
+
+    // 달력 미리보기 (평일만)
+    const first = new Date(y, mo - 1, 1).getDay(), last = new Date(y, mo, 0).getDate();
+    const names = out.names;
+    let t = '<table class="grid"><tr><th></th>' + ['월', '화', '수', '목', '금'].map((d) => '<th colspan="' + names.length + '" style="text-align:center">' + d + '</th>').join('') + '</tr><tr><th></th>' +
+      [1, 2, 3, 4, 5].map(() => names.map((n) => '<th style="text-align:center;font-size:12px">' + esc(n) + '</th>').join('')).join('') + '</tr>';
+    for (let w = 0; w < Math.ceil((first + last) / 7); w++) {
+      t += '<tr><td class="d">' + (w + 1) + '주</td>';
+      for (let dow = 1; dow <= 5; dow++) {
+        const day = w * 7 + dow - first + 1;
+        names.forEach((n, i) => {
+          if (day < 1 || day > last) { t += '<td></td>'; return; }
+          const p = out.res.people[n] && out.res.people[n][day];
+          const top = i === 0 ? '<div style="font-weight:700;color:#1e6fd9">' + day + '</div>' : '<div>&nbsp;</div>';
+          t += '<td>' + top + (p ? (p.absent ? '<span class="warn">결석</span>' : p.codes.join('<br>')) : '') + '</td>';
+        });
+      }
+      t += '</tr>';
+    }
+    $('preview').innerHTML = t + '</table>';
+    $('dl').onclick = () => XLSX.writeFile(out.wb, y + '년 ' + mo + '월 사업실적 달력(자동).xlsx');
+  }
+
+  const drop = $('drop');
+  drop.onclick = () => $('file').click();
+  $('file').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('on'); }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('on'); }));
+  drop.addEventListener('drop', (e) => addFiles([...e.dataTransfer.files].filter((f) => /\.xlsx?$/i.test(f.name))));
+  $('year').oninput = $('month').oninput = render;
+  $('clear').onclick = () => { records = []; render(); };
+  $('saveRules').onclick = () => {
+    const r = Conv.textToRules($('rules').value);
+    if (!r.length) { $('ruleMsg').textContent = '규칙을 읽지 못했어요'; return; }
+    rules = r; store.set('rules', $('rules').value);
+    order = $('order').value.split(',').map((x) => x.trim()).filter(Boolean);
+    if (order.length) store.set('order', order.join(',')); else order = Conv.DEFAULT_ORDER.slice();
+    $('ruleMsg').textContent = '저장했어요'; render();
+  };
+  $('resetRules').onclick = () => {
+    store.del('rules'); store.del('order'); rules = Conv.DEFAULT_RULES; order = Conv.DEFAULT_ORDER.slice();
+    $('rules').value = Conv.rulesToText(rules); $('order').value = order.join(', ');
+    $('ruleMsg').textContent = '처음 규칙으로 돌렸어요'; render();
+  };
+})();
+</script>
+</body>
+</html>

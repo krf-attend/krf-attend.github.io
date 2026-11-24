@@ -201,6 +201,7 @@
     <div class="grp">보고서</div>
     <button class="nav" data-view="sheet"><span data-ic="sheet"></span>근태기록표</button>
     <button class="nav" data-view="card"><span data-ic="card"></span>출퇴근카드</button>
+    <button class="nav" data-view="conv"><span data-ic="list"></span>사업실적 변환</button>
     <div class="grp">관리</div>
     <button class="nav" data-view="staff"><span data-ic="users"></span>직원</button>
     <button class="nav" data-view="place"><span data-ic="pin"></span>장소</button>
@@ -871,7 +872,7 @@
     return Math.max(end, dayStart + (24 + NIGHT_UNTIL_H) * 3600 * 1000);
   }
   const API_URL = 'https://script.google.com/macros/s/AKfycbz2JDvgmLBp1pYNwQiugaEPmIAR8C9f4fESfAICl5dmrbfS3RxNDce04pqRSEsf8q09/exec';
-  const VER = '2026-11-24 09:30';
+  const VER = '2026-11-24 11:40';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -961,7 +962,7 @@
     return out;
   }
 
-  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '전체 기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', sheet: '근태기록표', card: '출퇴근카드' };
+  const TITLE = { today: '오늘 현황', grid: '월간 표', list: '전체 기록', miss: '빠진 기록', log: '수정 이력', staff: '직원', place: '장소', sheet: '근태기록표', card: '출퇴근카드', conv: '사업실적 변환 (통합돌봄 기록지 → 월별 달력)' };
   const MONTHLY = { grid: 1, list: 1, miss: 1, log: 1, sheet: 1, card: 1 }, HAS_CSV = { grid: 1, list: 1, miss: 1, log: 1, staff: 1, place: 1, sheet: 1 };
   let ym = ymStr(new Date()), view = TITLE[store.get('pcView')] ? store.get('pcView') : 'grid', D = null, loadSeq = 0, idSeq = 0;
   const needD = () => view === 'grid' || view === 'list' || view === 'miss' || view === 'card';
@@ -1709,10 +1710,17 @@
       '<div class="kcards">' + cardHtml(s) + '</div></div>' : '<div class="empty">직원이 없어요</div>';
   }
 
+  // 사업실적 변환: 통합돌봄 기록지 엑셀 → 사업실적 월별 달력 (conv.html을 그대로 띄움, 파일은 이 PC 안에서만 읽음)
+  function renderConv() {
+    $('filters').innerHTML = ''; $('stat').textContent = '';
+    if ($('view').querySelector('iframe.conv')) return;          // 보던 내용 유지
+    $('view').innerHTML = '<iframe class="conv" src="conv.html?v=' + VER + '" style="display:block;width:100%;height:calc(100vh - 76px);border:0;background:#f4f5f7"></iframe>';
+  }
   function render() {
     setYm();
     if (view !== 'grid') $('drawer').classList.add('hidden');
     if (view === 'card') { if (D) renderCard(); return; }
+    if (view === 'conv') return renderConv();
     if (view === 'today') return renderToday();
     if (view === 'log') return renderLog();
     if (view === 'staff') return renderStaff();
