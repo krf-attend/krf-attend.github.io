@@ -237,7 +237,7 @@
     <button id="logoutBtn" class="hidden">로그아웃</button>
     <button id="pushBtn" class="hidden">🔔 등록 신청 알림 받기</button>
     <div id="msg"></div>
-    <div id="ver">화면 버전 2026-11-15 01:11</div>
+    <div id="ver">화면 버전 2026-11-24 09:30</div>
   </section>
 
   <section id="picker" class="hidden">
@@ -302,6 +302,16 @@
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
   const TZ_OFF = 9 * 3600 * 1000;                 // 한국 시간
   const MAX_SHIFT_MS = 16 * 3600 * 1000;           // 출근 후 이 시간이 지나면 다음 누름은 새 출근
+  const NIGHT_FROM_H = 14;                         // 이 시각(한국 시간) 이후 출근은 야간으로 보고
+  const NIGHT_UNTIL_H = 12;                        //   다음날 이 시각까지 누르면 퇴근
+  /** 이 출근 기록이 퇴근을 받아 주는 마지막 시각 (낮 출근: 16시간 뒤, 오후·저녁 출근: 다음날 낮 12시 중 늦은 쪽) */
+  function shiftEnd(inAt) {
+    const k = inAt + TZ_OFF, h = new Date(k).getUTCHours();
+    const end = inAt + MAX_SHIFT_MS;
+    if (h < NIGHT_FROM_H) return end;
+    const dayStart = Math.floor(k / 86400000) * 86400000 - TZ_OFF;
+    return Math.max(end, dayStart + (24 + NIGHT_UNTIL_H) * 3600 * 1000);
+  }
   const DEDUP_MS = 60 * 1000;                      // 1분 안에 연달아 누르면 무시
   const DEFAULT_RADIUS = 150;
   const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
@@ -416,7 +426,7 @@
     if (best) await ref.set({ no: String(no), type: best.type, at: best.at, wd: best.wd, place: best.place, nogps: best.lat == null && !/관리자 추가/.test(best.how || ''), id: best.id });
     else await ref.delete();
   }
-  const working = (l, now) => !!l && l.type === '출근' && (now - l.at) <= MAX_SHIFT_MS;
+  const working = (l, now) => !!l && l.type === '출근' && now <= shiftEnd(l.at);
 
   /* ───────── 화면이 부르는 기능들 (서버와 같은 모양의 답) ───────── */
   const H = {};
@@ -509,7 +519,7 @@
     const L = await getDoc('latest/' + encodeURIComponent(dv.no));
     if (L && !late && Math.abs(at - L.at) < DEDUP_MS) return { ok: true, duplicate: true, type: L.type, time: display(L.at), place: L.place };
     let type, wd;
-    if (L && L.type === '출근' && at > L.at && (at - L.at) <= MAX_SHIFT_MS) { type = '퇴근'; wd = L.wd; } else { type = '출근'; wd = ymd(at); }
+    if (L && L.type === '출근' && at > L.at && at <= shiftEnd(L.at)) { type = '퇴근'; wd = L.wd; } else { type = '출근'; wd = ymd(at); }
     if (late && (data.type === '출근' || data.type === '퇴근') && data.type !== type) {
       type = data.type;
       wd = (type === '퇴근' && L && L.type === '출근' && (at - L.at) <= 24 * 3600 * 1000) ? L.wd : ymd(at);
@@ -894,6 +904,16 @@
 
 </script>
 <script>
+  const NIGHT_FROM_H2 = 14;                         // 이 시각(한국 시간) 이후 출근은 야간으로 보고
+  const NIGHT_UNTIL_H2 = 12;                        //   다음날 이 시각까지 누르면 퇴근
+  /** 이 출근 기록이 퇴근을 받아 주는 마지막 시각 (낮 출근: 16시간 뒤, 오후·저녁 출근: 다음날 낮 12시 중 늦은 쪽) */
+  function shiftEnd(inAt) {
+    const k = inAt + 9 * 3600 * 1000, h = new Date(k).getUTCHours();
+    const end = inAt + 16 * 3600 * 1000;
+    if (h < NIGHT_FROM_H2) return end;
+    const dayStart = Math.floor(k / 86400000) * 86400000 - 9 * 3600 * 1000;
+    return Math.max(end, dayStart + (24 + NIGHT_UNTIL_H2) * 3600 * 1000);
+  }
   // ▼ 기록 서버(Google Apps Script 웹 앱) 주소
   // 넓은 화면(PC)에서는 관리 화면으로 보냄. PC에서 휴대폰 화면을 보려면 주소 끝에 ?m=1
   const IS_PC = !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
@@ -1553,7 +1573,7 @@
         pairsOf(histDays[k]).forEach((p) => { if (!p.in && p.out && p.out.day === date) adds.push(missPre(k, p.out, '출근')); });
       });
       if (day) pairsOf(day).forEach((p) => {
-        if (p.in && !p.out) { if (date !== todayStr() && Date.now() - p.in.at > 16 * 3600 * 1000) adds.push(missPre(date, p.in, '퇴근')); }
+        if (p.in && !p.out) { if (date !== todayStr() && Date.now() > shiftEnd(p.in.at)) adds.push(missPre(date, p.in, '퇴근')); }
         else if (!p.in && p.out) adds.push(missPre(date, p.out, '출근'));
       });
       adds.forEach((a, i) => {
@@ -1858,7 +1878,7 @@
     (d.staff || []).forEach((s) => {
       const rows = [];
       s.days.forEach((day) => pairsOf(day).forEach((p) => {
-        if (p.in && !p.out) { if (day.date === today || now - p.in.at < 16 * 3600 * 1000) return; rows.push({ wd: day.date, has: p.in, miss: '퇴근' }); }
+        if (p.in && !p.out) { if (day.date === today || now <= shiftEnd(p.in.at)) return; rows.push({ wd: day.date, has: p.in, miss: '퇴근' }); }
         else if (!p.in && p.out) rows.push({ wd: day.date, has: p.out, miss: '출근' });
       }));
       if (rows.length) out.push({ no: s.no, name: s.name, status: s.status, rows: rows });
